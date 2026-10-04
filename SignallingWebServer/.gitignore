@@ -5,4 +5,6 @@ www/
 config.json
 ssl/
 certs/
+# Auth data: users, invites and sessions are per-machine and must never be committed.
+data/
 

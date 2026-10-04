@@ -61,6 +61,12 @@ Options:
   --snapshot_proxy              Proxies /snapshots on the webserver through to the SFU snapshot API, so stream previews are served from the same origin as the rest of the frontend. (default: false)
   --snapshot_proxy_host <host>  The host of the SFU snapshot API to proxy to. (default: "127.0.0.1")
   --snapshot_proxy_port <port>  The port of the SFU snapshot API to proxy to. (default: "8891")
+  --no_auth                     Disables the sign-in requirement. Anyone can view the grid, the player and the player websocket. (default: false)
+  --auth_store <path>           Sets the path of the auth data file (users, invites, sessions). (default: "SignallingWebServer/data/auth.json")
+  --session_days <days>         Sets how long a sign-in lasts before it has to be repeated. (default: "30")
+  --invite_days <days>          Sets the default lifetime of an invite link generated from the admin page. (default: "7")
+  --auth_app_name <name>        Sets the site name shown on the sign-in, invite and admin pages. (default: "Live streams")
+  --auth_base_url <url>         Sets the public base URL used to build invite links, e.g. https://streams.example.com. (default: "")
   --https                       Enables the webserver on https_port and enabling SSL (default: false)
   --https_port <port>           Sets the listen port for the https server. (default: 443)
   --ssl_key_path <path>         Sets the path for the SSL key file. (default: "certificates/client-key.pem")
@@ -89,6 +95,11 @@ These CLI options can also be described in a `config.json` (default config file 
 	"snapshot_proxy": true,
 	"snapshot_proxy_host": "127.0.0.1",
 	"snapshot_proxy_port": "8891",
+	"auth_store": "data/auth.json",
+	"session_days": "30",
+	"invite_days": "7",
+	"auth_app_name": "Live streams",
+	"auth_base_url": "",
 	"log_config": false,
 	"stdin": false
 }
@@ -111,6 +122,92 @@ GET /snapshots/SFU-MyApp.jpg       ->  the latest frame, or 404 if there is not 
 ```
 
 Set `snapshot_proxy_host`/`snapshot_proxy_port` to wherever the SFU snapshot API is listening. If it is unreachable the proxy answers 502 and logs `Snapshot proxy unavailable`, rather than breaking the rest of the server. The route only exists when the option is on, so leaving it off costs nothing.
+
+## Sign-in and accounts
+
+**On by default.** Wilbur will not serve the grid, the player page or open a player websocket to somebody who is not signed in. The whole system is built into the signalling server — no external service, no database engine and no native modules — and it stores its state in one JSON file.
+
+There are three ways into a running deployment, and all three matter:
+
+| Way in | Protected by |
+| --- | --- |
+| Web pages on `player_port` (`/`, `/grid.html`, `/player.html`, scripts and images) | the express gate below |
+| The player websocket on `player_port` | `verifyClient` on the ws handshake, since ws upgrades never pass through express |
+| The streamer port (`--streamer_port`, 8888 by default) | **nothing** — see [the known risk](#the-streamer-port-is-still-open) |
+
+### Creating the first account
+
+There are no accounts until one is made from the command line, so do this before exposing the server:
+
+```
+node dist/auth/cli.js create-admin alice
+```
+
+That prints a generated password once, or you can pass `--password "<password>"`. Running the server with no accounts logs the same hint at startup. After that, every further account is created from the admin page, and the CLI is only needed for recovery.
+
+### The command line
+
+Every command takes `--store <file>` (defaults to the same file the server uses, so the two never disagree) and `--base <url>` (used to print absolute invite links).
+
+```
+create-admin <username>          Create or re-arm an admin account
+create-user <username>           Create or re-arm an ordinary account
+set-password <username>          Set a password directly
+invite <username>                Issue an invite link without touching the web UI
+reset-link <username>            Issue a single-use password reset link
+list-users                       Show accounts, roles and status
+disable-user <username>          Refuse sign-ins and end existing sessions
+enable-user <username>           Undo the above
+revoke-sessions <username>       End every session for an account
+delete-user <username>           Remove the account, its sessions and its invites
+```
+
+Accounts are edited in memory by the running server, so the CLI is for building accounts before the first boot, or for recovery while the server is stopped. On a running server use the admin page instead of the CLI.
+
+### The admin page
+
+`/admin` is not linked from anywhere. It answers 404 unless the signed-in account is an admin, so an ordinary member has no way to know it exists. From it you can:
+
+* issue an invite, choosing the username, a label, the role and how long the link lasts, and see the link it produced;
+* see the roster with each account's role, whether it can sign in, and when it last did, and revoke sessions, disable, re-enable, reset the password of, or delete any of them;
+* see and revoke pending invites, including the links that are still outstanding.
+
+An invite **creates the account immediately, without a password**, and the link sets the first password. Redeeming also signs the new member in. Only one invite can be outstanding per account: issuing another one revokes the previous link. A used or revoked link is refused, and the code itself is dropped from the file as soon as it is spent, so only its hash remains for the audit trail.
+
+Every form on the page carries a CSRF token tied to the session. A POST without a valid token is rejected with `Form expired`.
+
+### Sessions
+
+Signing in returns an opaque token in the `ps_session` cookie (`HttpOnly`, `SameSite=Lax`, and `Secure` when the request arrived over https or with `X-Forwarded-Proto: https`). Only the SHA-256 of that token is written to disk, so the file cannot be replayed as a sign-in. Validity is decided on every request, which is why signing out, disabling an account, revoking sessions and deleting an account all take effect immediately — including for websockets.
+
+Sessions last `--session_days` (30 by default) and are refreshed on use. Failed sign-ins are limited to 30 per address and 6 per address+account per 15 minutes; invite redemption to 20 per hour and admin actions to 200 per hour. A rate-limited reply carries `Retry-After` and the page says how long to wait.
+
+**Set `--reverse-proxy`** whenever Wilbur sits behind one, or every request looks like it came from the proxy and the per-address limits collapse into a single shared budget. The server warns at startup if sign-in is on without it.
+
+### Where the data lives
+
+`data/auth.json` (override with `--auth_store`), next to `SignallingWebServer` and outside both `dist/` and `http_root`, written 0600 via a temp file and a rename. `data/` is ignored by git. Back it up and do not serve it: the server warns if the store is placed inside the web root.
+
+### The streamer port is still open
+
+`--streamer_port` (8888) is unauthenticated. Anybody who can reach it can publish a stream, or with a crafted message interfere with the server's notion of what is streaming. Sign-in closes the viewer side only. Until that port is gated, firewall it so only the streaming machines can reach it — the port has no business being reachable from the internet.
+
+### Turning it off
+
+`--no_auth` removes the gate entirely: no sign-in page, no sessions, everyone sees everything. It exists for local development and for a deployment that is protected some other way (an allow-list in front of the server, for example).
+
+## Deploying an update
+
+The build scripts skip `npm run build` in `SignallingWebServer` when `dist/` already exists, so `git pull` on a deployment can leave old compiled code in place and quietly serve the previous version. After pulling a change, always rebuild and then restart:
+
+```
+git pull
+npm run build:all:cjs
+```
+
+`www/` is generated by the same command, so the frontend is rebuilt along with the server. Restarting Wilbur is safe: it saves the auth file before exiting, so a freshly redeemed invite or a just-issued session is not lost.
+
+With a reverse proxy such as Caddy in front, add `--reverse-proxy` (or `"reverse_proxy": true` in `config.json`) so the real client address reaches the sign-in limits and the `Secure` cookie. Sign-in is on by default after the update, so create the first admin (`node dist/auth/cli.js create-admin alice`) before restarting, otherwise nobody can get in.
 
 ## Stream grid status
 

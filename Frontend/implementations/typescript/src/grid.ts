@@ -1128,9 +1128,27 @@ function applyIndex(index: SnapshotIndex): void {
     updateSubtitle();
 }
 
+// The session cookie can expire while the grid is open. Without this the page would
+// just quietly stop updating, so send the browser to the sign-in page instead.
+let signingIn = false;
+function signInAgain(): void {
+    if (signingIn) {
+        return;
+    }
+    signingIn = true;
+    const next = window.location.pathname + window.location.search;
+    window.location.href = `/login?next=${encodeURIComponent(next)}`;
+}
+
 function refreshIndex(): void {
     fetch(INDEX_URL, { cache: 'no-store' })
-        .then(response => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
+        .then(response => {
+            if (response.status === 401) {
+                signInAgain();
+                return Promise.reject(new Error('401'));
+            }
+            return response.ok ? response.json() : Promise.reject(new Error(String(response.status)));
+        })
         .then((index: SnapshotIndex) => applyIndex(index))
         .catch(() => {
             indexAvailable = false;

@@ -13,6 +13,8 @@ import {
 } from '@epicgames-ps/lib-pixelstreamingsignalling-ue5.5';
 import { beautify, IProgramOptions } from './Utils';
 import { initInputHandler } from './InputHandler';
+import { createAuth, defaultStorePath, IAuth } from './auth';
+import { IAuthLogger } from './auth/util';
 import { Command, Option } from 'commander';
 import { initialize } from 'express-openapi';
 
@@ -134,6 +136,36 @@ program
         'Port of the SFU snapshot API to proxy to.',
         config_file.snapshot_proxy_port || '8891'
     )
+    .option(
+        '--no_auth',
+        'Disables the sign-in requirement. Anyone can view the grid, the player and the player websocket.',
+        config_file.no_auth || false
+    )
+    .option(
+        '--auth_store <path>',
+        'Sets the path of the auth data file (users, invites, sessions).',
+        config_file.auth_store || defaultStorePath()
+    )
+    .option(
+        '--session_days <days>',
+        'Sets how long a sign-in lasts before it has to be repeated.',
+        config_file.session_days || '30'
+    )
+    .option(
+        '--invite_days <days>',
+        'Sets the default lifetime of an invite link generated from the admin page.',
+        config_file.invite_days || '7'
+    )
+    .option(
+        '--auth_app_name <name>',
+        'Sets the site name shown on the sign-in, invite and admin pages.',
+        config_file.auth_app_name || 'Live streams'
+    )
+    .option(
+        '--auth_base_url <url>',
+        'Sets the public base URL used to build invite links, e.g. https://streams.example.com. Defaults to whatever host the admin page was loaded from.',
+        config_file.auth_base_url || ''
+    )
     .option('--https', 'Enables the webserver on https_port and enabling SSL', config_file.https || false)
     .addOption(
         new Option('--https_port <port>', 'Sets the listen port for the https server.')
@@ -235,6 +267,55 @@ if (options.reverse_proxy) {
     app.set('trust proxy', options.reverse_proxy_num_proxies);
 }
 
+// Sign-in. Everything registered on `app` here runs before the static file handler and
+// the rate limiter that `WebServer` installs, which is what makes the gate effective.
+//   resolveSession -> reads the session cookie, so the pages below can render the user
+//   router         -> /login, /invite/:code, /account, /admin
+//   gate           -> rejects anything that is not signed in
+let auth: IAuth | undefined;
+if (options.no_auth) {
+    Logger.warn('Authentication is DISABLED. Anyone who can reach this server can watch the streams.');
+} else {
+    const authLogger: IAuthLogger = {
+        info: (message: string) => Logger.info(message),
+        warn: (message: string) => Logger.warn(message)
+    };
+
+    auth = createAuth({
+        storePath: options.auth_store,
+        sessionDays: Number.parseInt(options.session_days, 10) || 30,
+        inviteDays: Number.parseInt(options.invite_days, 10) || 7,
+        baseUrl: options.auth_base_url,
+        appName: options.auth_app_name,
+        streamerPort: Number.parseInt(options.streamer_port, 10) || 8888,
+        logger: authLogger
+    });
+
+    app.use(auth.resolveSession);
+    app.use(auth.router);
+    app.use(auth.gate);
+
+    const storePath = path.resolve(options.auth_store);
+    const users = auth.store.listUsers();
+    Logger.info(`Auth store: ${storePath} (${users.length} account(s))`);
+    if (users.length === 0) {
+        Logger.info(
+            'No accounts exist yet. Create the first admin with: ' +
+                `node dist/auth/cli.js --store "${storePath}" create-admin <username>`
+        );
+    }
+    const webRoot = path.resolve(options.http_root);
+    if (storePath === webRoot || storePath.startsWith(webRoot + path.sep)) {
+        Logger.warn(`Auth store ${storePath} is inside the served web root. Move it with --auth_store.`);
+    }
+    if (!options.reverse_proxy) {
+        Logger.warn(
+            'Sign-in is enabled but --reverse-proxy is not set, so every request looks like it ' +
+                'comes from the proxy address. Add --reverse-proxy so per-address login limits work.'
+        );
+    }
+}
+
 // Stream grid previews. The SFU decodes a JPEG per stream and serves it on its
 // own port; proxying here keeps the browser on a single origin so the grid can
 // use relative /snapshots/<id>.jpg URLs and no extra firewall port is needed in
@@ -280,6 +361,11 @@ const serverOpts: IServerConfig = {
     hideNonSfuStreamers: options.hide_non_sfu_streamers
 };
 
+if (auth) {
+    // Websocket upgrades never reach express, so the player socket needs its own gate.
+    serverOpts.playerWsOptions = { verifyClient: auth.playerWsOptions.verifyClient };
+}
+
 if (options.serve) {
     const webserverOptions: IWebServerConfig = {
         httpPort: options.player_port,
@@ -323,4 +409,24 @@ if (options.rest_api) {
             signallingServer
         }
     });
+}
+
+// The auth store saves on a short debounce, so a restart could otherwise drop the last
+// write (a freshly redeemed invite, or a session that was just issued). Handling the
+// stop signals here -- rather than inside the auth module -- keeps that decision with
+// the application. The handler exits explicitly because installing one replaces Node's
+// default "terminate on SIGTERM" behaviour.
+if (auth) {
+    let stopping = false;
+    const stop = (signal: string) => {
+        if (stopping) {
+            return;
+        }
+        stopping = true;
+        Logger.info(`Received ${signal}. Saving auth store and stopping.`);
+        auth?.shutdown();
+        process.exit(0);
+    };
+    process.on('SIGINT', () => stop('SIGINT'));
+    process.on('SIGTERM', () => stop('SIGTERM'));
 }
