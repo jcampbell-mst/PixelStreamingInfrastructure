@@ -15,14 +15,16 @@
     --text: #eeedec;
     --dim: #a59f97;
     --faint: #80796f;
-    /* The tally light. This is the one saturated red on the page and it means
-       what a tally means in a gallery: this one is selected. */
+    /* The tally light. This is the one saturated red on the page and it means what
+       a tally means in a gallery: this one is on air. Nothing else may use it - a
+       fault is amber, and anything that is merely important is neither. */
     --accent: #f2332c;
     --accent-soft: rgba(242, 51, 44, 0.22);
-    --live: #25e455;
+    /* Signal green: a feed that is up, a copy that worked, a feed that came back.
+       Health, never "on air" - the tally says that. */
+    --good: #25e455;
     --warn: #f0a93b;
     --warn-soft: rgba(240, 169, 59, 0.12);
-    --danger: #f2332c;
     --tile-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
     --tile-shadow-hover: 0 12px 30px rgba(0, 0, 0, 0.45);
 
@@ -39,7 +41,7 @@
        palette: the seven standard bars are used for decoration and for state,
        but never as the only cue for anything - every colour is paired with a
        word or a shape. Red is deliberately left out of the decorative strips so
-       that it stays reserved for faults. */
+       that the one place it appears is the tally. */
     --bar-grey: #bfbfbf;
     --bar-yellow: #bfbf00;
     --bar-cyan: #00bfbf;
@@ -528,6 +530,26 @@ main.shell {
     border-color: var(--accent);
 }
 
+/* One icon system. Every symbol is a stroked outline on a 24x24 grid that
+   inherits the colour and the size of the text it sits in, so no icon needs to be
+   styled where it is used. The filled dot is the one exception the pending mark
+   needs. */
+.icon {
+    width: 1em;
+    height: 1em;
+    flex: 0 0 auto;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.icon > .dot {
+    fill: currentColor;
+    stroke: none;
+}
+
 .thumb {
     position: relative;
     aspect-ratio: 16 / 9;
@@ -601,13 +623,18 @@ main.shell {
     background: currentColor;
 }
 
+/* The tally itself. Red on a tinted plate with a dot that carries a glow, which
+   is as close as a flat surface gets to a lamp - and red is the only thing that
+   means "on air" here, so it is never used for anything else on the tile. */
 .tile[data-state="live"] .badge {
-    color: var(--live);
-    border-color: rgba(37, 228, 85, 0.35);
+    color: var(--accent);
+    border-color: rgba(242, 51, 44, 0.4);
+    background: rgba(38, 15, 13, 0.8);
 }
 
 .tile[data-state="live"] .badge::before {
     background: currentColor;
+    box-shadow: 0 0 0.45rem rgba(242, 51, 44, 0.75);
 }
 
 /* The live dot pings via a scaled, faded ring rather than a pulsing box-shadow:
@@ -628,7 +655,7 @@ main.shell {
 
 /* What the tally falls back to when the streamer list itself cannot be refreshed
    any more: it borrows the amber of the disconnected pill in the top bar, since
-   the tile is reporting the same condition. A listed stream stays green however
+   the tile is reporting the same condition. A listed stream stays red however
    its preview is doing - the preview is not evidence about the stream. */
 .tile[data-state="unknown"] .badge {
     color: var(--warn);
@@ -661,6 +688,41 @@ main.shell {
 .tile:hover .play,
 .tile:focus-within .play { opacity: 1; }
 
+/* The feed's own figures, printed on the frame the way a multiviewer prints them,
+   rather than stacked on a line beneath it. Both keep the badge's dark plate so
+   they stay legible over any picture, and both are added after the play wash, so
+   the one thing being read is the one thing that never dims. A figure the index
+   cannot supply is hidden rather than shown as a dash. */
+
+.chip {
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    max-width: calc(100% - 1.2rem);
+    padding: 0.2rem 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--pill-radius);
+    background: rgba(16, 15, 14, 0.78);
+    color: #d6d0c8;
+    font-size: 0.7rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.chip[hidden] { display: none; }
+
+.chip-time { top: 0.6rem; right: 0.6rem; }
+
+.chip-viewers { right: 0.6rem; bottom: 0.6rem; }
+
+.chip-text {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
 .meta {
     display: flex;
     flex-direction: column;
@@ -679,16 +741,31 @@ main.shell {
 }
 
 .meta .info {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
     color: var(--dim);
     font-size: 0.76rem;
-    white-space: nowrap;
+}
+
+.meta .info-text {
+    min-width: 0;
     overflow: hidden;
+    white-space: nowrap;
     text-overflow: ellipsis;
+}
+
+/* The icon is decorative next to wording that already says what is happening, so
+   it takes the colour of the line it sits in rather than a colour of its own. */
+.meta .info-icon {
+    display: inline-flex;
+    flex: 0 0 auto;
 }
 
 /* Preview health, reported here rather than on the badge: a snapshot that failed
    to capture is no evidence that the stream is down, and a stream that is listed
-   keeps its live badge while its preview troubles are spelled out underneath it.
+   keeps its tally while its preview troubles are spelled out underneath it.
    Amber is the only level that speaks up, and it is always paired with wording
    that says what is wrong, so it never relies on colour alone. */
 .tile[data-info="warn"] .meta .info {
@@ -696,96 +773,79 @@ main.shell {
     font-weight: 600;
 }
 
-/* Tile footer: what the feed is doing (left) and what the operator can do to it
-   (right). The facts are plain text, and either of them disappears when the
-   index has nothing to report rather than showing a dash for nothing. */
+/* Tile footer: the controls, and nothing but the controls. What the feed was doing
+   used to share this strip as a line of text; that has moved onto the frame, so
+   the whole width belongs to the three things an operator can do with the feed.
+   Equal segments and hairline dividers make it read as one instrument rather than
+   three buttons that happen to be adjacent, and it gives the row the same shape on
+   every tile, which is what a wall of them wants. */
 
 .foot {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
     margin-top: auto;
-    padding: 0.5rem 0.6rem 0.55rem 0.85rem;
     border-top: 1px solid var(--border);
     background: rgba(0, 0, 0, 0.16);
 }
 
-.facts {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.4rem;
-    min-width: 0;
-    color: var(--dim);
-    font-size: 0.74rem;
-}
-
-.fact[hidden] { display: none; }
-
-/* The duration is the pair to the live badge, so it borrows the live colour and
-   a small dot: green only ever means "this is up", and it is always spelled out
-   in words as well. */
-.fact-live {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    color: var(--live);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-}
-
-.fact-live::before {
-    content: "";
-    width: 0.35rem;
-    height: 0.35rem;
-    border-radius: 50%;
-    background: currentColor;
-}
-
-.fact-viewers { font-variant-numeric: tabular-nums; }
-
 .actions {
     display: flex;
-    flex: none;
-    align-items: center;
-    gap: 0.25rem;
+    flex: 1 1 auto;
+    align-items: stretch;
+    min-width: 0;
 }
 
 .action {
-    padding: 0.28rem 0.5rem;
-    border: 1px solid transparent;
-    border-radius: 7px;
+    display: inline-flex;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-width: 0;
+    padding: 0.5rem 0.35rem;
+    border: 0;
+    border-left: 1px solid var(--border);
     background: transparent;
     color: var(--dim);
     font: inherit;
     font-size: 0.72rem;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.action:first-child { border-left: 0; }
+
+/* A label may shorten before it may widen its segment: the icon stays, so the
+   button still says what it does at the narrowest tile the grid can produce. */
+.action-label {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 .action:hover {
-    border-color: var(--border-strong);
     background: var(--button-hover);
     color: var(--text);
 }
 
 .action:focus-visible {
     outline: 2px solid var(--accent);
-    outline-offset: 2px;
+    outline-offset: -2px;
 }
 
 /* The confirmation of a copy, and the failure of one. Neither is a fault state,
-   so neither reaches for red: a copy that worked is quiet, and one that did not
-   is amber, like every other thing this page is unhappy about. */
+   so neither reaches for the tally: a copy that worked is signal green and quiet,
+   and one that did not is amber, like every other thing this page is unhappy
+   about. The segments have no border left to colour, so each takes a wash of its
+   own. */
 .action[data-done="yes"] {
-    border-color: rgba(37, 228, 85, 0.4);
-    color: var(--live);
+    background: rgba(37, 228, 85, 0.12);
+    color: var(--good);
 }
 
 .action[data-done="no"] {
-    border-color: rgba(240, 169, 59, 0.4);
+    background: var(--warn-soft);
     color: var(--warn);
 }
 
@@ -797,7 +857,7 @@ main.shell {
 }
 
 .tile[data-pinned="true"] .action[aria-pressed="true"] {
-    border-color: rgba(191, 191, 0, 0.4);
+    background: rgba(191, 191, 0, 0.12);
     color: var(--bar-yellow);
 }
 
@@ -890,7 +950,7 @@ main.shell {
 
 /* A feed that came back is an all-clear, which is what the live colour means on
    this page. Neither kind is a fault, so neither is red. */
-.toast[data-kind="up"] { border-left-color: var(--live); }
+.toast[data-kind="up"] { border-left-color: var(--good); }
 
 .toast-text {
     display: flex;
@@ -906,7 +966,7 @@ main.shell {
 }
 
 .toast[data-kind="down"] .toast-head { color: var(--warn); }
-.toast[data-kind="up"] .toast-head { color: var(--live); }
+.toast[data-kind="up"] .toast-head { color: var(--good); }
 
 .toast-body {
     color: var(--dim);
