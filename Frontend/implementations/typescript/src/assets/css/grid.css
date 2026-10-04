@@ -467,6 +467,103 @@ a.button {
     border-color: rgba(240, 169, 59, 0.3);
 }
 
+/* The account menu is the one place the static grid meets the server-rendered
+   sign-in pages, so it is styled as the last control in the bar rather than as
+   part of the grid. */
+.profile {
+    position: relative;
+}
+
+.profile-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding-inline: 0.6rem 0.5rem;
+}
+
+.profile-button[aria-expanded="true"] {
+    background: var(--button-hover);
+    border-color: var(--border-strong);
+}
+
+/* Empty until the server answers, so the disc is sized here rather than by its
+   contents - without that the button would jump when the initial arrived. */
+.profile-avatar {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--surface-2);
+    box-shadow: inset 0 0 0 1px var(--border-strong);
+    color: var(--dim);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+/* A long display name must not push the bar around. */
+.profile-name {
+    max-width: 9rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.profile-caret {
+    font-size: 0.9rem;
+    opacity: 0.65;
+    transition: transform 0.15s ease;
+}
+
+.profile-button[aria-expanded="true"] .profile-caret {
+    transform: rotate(180deg);
+}
+
+.profile-menu {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    right: 0;
+    z-index: 5;
+    min-width: 12rem;
+    padding: 0.3rem;
+    border: 1px solid var(--border);
+    border-radius: var(--ctl-radius);
+    background: var(--surface);
+    box-shadow: var(--tile-shadow-hover);
+}
+
+.profile-menu[hidden] { display: none; }
+
+.profile-meta {
+    margin: 0.35rem 0.6rem 0.45rem;
+    color: var(--dim);
+    font-size: 0.74rem;
+    overflow-wrap: anywhere;
+}
+
+.profile-menu a {
+    display: block;
+    padding: 0.45rem 0.6rem;
+    border-radius: 7px;
+    color: var(--text);
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+/* `display: block` above would otherwise win over the hidden attribute. */
+.profile-menu a[hidden] { display: none; }
+
+.profile-menu a:hover {
+    background: var(--button-hover);
+}
+
+.profile-menu a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
 /* Grid -------------------------------------------------------------------- */
 
 main.shell {

@@ -407,6 +407,20 @@ export function createAuthRouter(options: IAuthRoutesOptions): Router {
         );
     });
 
+    // The grid is a static file, so it cannot be rendered with the visitor's name in
+    // it and it has no session of its own to read. It asks here instead, and this is
+    // also how it learns whether to offer the administration link at all. Nothing is
+    // returned for a signed-out caller, which the page treats as "not signed in"
+    // rather than as an error.
+    router.get('/account/session', (req, res) => {
+        const user = req.user;
+        if (!user) {
+            res.json(null);
+            return;
+        }
+        res.json({ username: user.username, displayName: user.displayName, role: user.role });
+    });
+
     router.post('/account/password', async (req, res) => {
         if (!req.user) {
             res.redirect(303, '/login?next=%2Faccount');

@@ -49,6 +49,22 @@
                 <button id="sound" type="button" class="button" data-mode="off" aria-pressed="false" title="Play a short tone with each alert.">Sound off</button>
                 <button id="fx" type="button" class="button" data-mode="auto" title="Animated backdrop behind the stream grid. Auto drops it when the machine cannot spare the frames; No montage keeps the orbiting glows but stops the fading preview wash.">Backdrop: Auto</button>
                 <a id="wall" class="button" href="./wall.html" title="Watch every feed at once on one page.">Multiviewer</a>
+                <!-- Where the grid meets the sign-in pages. This page is a static
+                     file, so the label and the administration link are filled in by
+                     grid.ts once the server says who is asking; the button works
+                     before then, because the account page is useful either way. -->
+                <div class="profile" id="profile">
+                    <button id="profileButton" type="button" class="button profile-button" aria-expanded="false" aria-controls="profileMenu">
+                        <span id="profileAvatar" class="profile-avatar" aria-hidden="true"></span>
+                        <span id="profileName" class="profile-name">Account</span>
+                        <svg class="icon profile-caret" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 9.5 12 14.5 17 9.5"/></svg>
+                    </button>
+                    <div id="profileMenu" class="profile-menu" hidden>
+                        <p id="profileMeta" class="profile-meta">Your account</p>
+                        <a href="/account">Account settings</a>
+                        <a id="profileAdmin" href="/admin" hidden>Administration</a>
+                    </div>
+                </div>
             </div>
         </div>
     </header>

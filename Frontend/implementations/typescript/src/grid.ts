@@ -237,6 +237,13 @@ const sortEl = document.getElementById('sort') as HTMLSelectElement;
 const notifyEl = document.getElementById('notify') as HTMLButtonElement;
 const soundEl = document.getElementById('sound') as HTMLButtonElement;
 const alertsEl = document.getElementById('alerts') as HTMLElement;
+const profileEl = document.getElementById('profile') as HTMLElement;
+const profileButtonEl = document.getElementById('profileButton') as HTMLButtonElement;
+const profileMenuEl = document.getElementById('profileMenu') as HTMLElement;
+const profileAvatarEl = document.getElementById('profileAvatar') as HTMLElement;
+const profileNameEl = document.getElementById('profileName') as HTMLElement;
+const profileMetaEl = document.getElementById('profileMeta') as HTMLElement;
+const profileAdminEl = document.getElementById('profileAdmin') as HTMLElement;
 
 const tiles = new Map<string, Tile>();
 // The pin set and the sort outlive the tiles, because a pinned feed that is
@@ -1372,3 +1379,61 @@ updateAlertButtons();
 connect();
 window.setTimeout(() => watchFrameRate(false), 2000);
 window.setTimeout(() => watchFrameRate(true), 20000);
+
+// Account menu. This page is a static file, so nothing in its markup knows who is
+// reading it: it opens regardless, and the server's answer only decides the label
+// and whether administration is offered. A failed or signed-out answer leaves the
+// button as the markup built it, which still links to the account page, and that
+// is the part that has to work.
+function setProfileOpen(open: boolean): void {
+    profileMenuEl.hidden = !open;
+    profileButtonEl.setAttribute('aria-expanded', String(open));
+}
+
+profileButtonEl.addEventListener('click', () => {
+    setProfileOpen(profileMenuEl.hidden);
+});
+
+// Closing on a click elsewhere, and on Escape, covers the mouse and the keyboard;
+// there is no modal behaviour to trap, because the menu is a disclosure of links.
+document.addEventListener('click', (ev) => {
+    const target = ev.target as Node | null;
+    if (profileMenuEl.hidden || (target && profileEl.contains(target))) {
+        return;
+    }
+    setProfileOpen(false);
+});
+
+document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && !profileMenuEl.hidden) {
+        setProfileOpen(false);
+        profileButtonEl.focus();
+    }
+});
+
+interface ViewerSession {
+    username?: string;
+    displayName?: string;
+    role?: string;
+}
+
+void fetch('/account/session', { headers: { accept: 'application/json' } })
+    .then((response) => (response.ok ? (response.json() as Promise<ViewerSession | null>) : null))
+    .then((session) => {
+        if (!session || !session.username) {
+            return;
+        }
+        const name = session.displayName || session.username;
+        profileNameEl.textContent = name;
+        // A single letter is all the disc has room for, and it is decorative: the
+        // name beside it is the label.
+        profileAvatarEl.textContent = name.slice(0, 1);
+        profileMetaEl.textContent = `Signed in as ${session.username}`;
+        profileButtonEl.title = `Signed in as ${session.username}`;
+        if (session.role === 'admin') {
+            profileAdminEl.hidden = false;
+        }
+    })
+    .catch(() => {
+        // Left as it was: the account link still works.
+    });
