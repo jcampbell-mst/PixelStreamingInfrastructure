@@ -146,6 +146,30 @@ html, body {
     text-overflow: ellipsis;
 }
 
+/* The tally light at the head of the bar, in the same language as the grid: red once the picture
+   is up and going out, amber while a dropped feed is being rebuilt, dark before the player has
+   anything to show. The state comes from the loader's own stage. */
+.state-dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: #47433e;
+    transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+#shell[data-state='live'] .state-dot {
+    background: var(--accent);
+    box-shadow: 0 0 0 0.22rem rgba(242, 51, 44, 0.18);
+    animation: pulseDot 1.8s ease-in-out infinite;
+}
+
+#shell[data-state='reconnecting'] .state-dot {
+    background: var(--bar-yellow);
+    box-shadow: 0 0 0 0.22rem rgba(191, 191, 0, 0.16);
+    animation: pulseDot 1.8s ease-in-out infinite;
+}
+
 #statusGroup {
     display: flex;
     align-items: center;
@@ -192,7 +216,8 @@ html, body {
 
 #soundToggle[hidden],
 #pipToggle[hidden],
-#helpToggle[hidden] { display: none; }
+#helpToggle[hidden],
+#fullscreenToggle[hidden] { display: none; }
 
 #soundToggle:hover,
 #soundToggle:focus-visible,
@@ -237,6 +262,13 @@ html, body {
 #fullscreenToggle svg { stroke-width: 2; }
 #pipToggle svg rect:first-child { stroke-width: 2; }
 
+/* One button, two icons: the arrow pair points outwards until the stage is expanded and inwards
+   once it is, so the control always says what the click will do. */
+#fullscreenToggle .fs-exit { display: none; }
+
+html.is-fullscreen #fullscreenToggle .fs-enter { display: none; }
+html.is-fullscreen #fullscreenToggle .fs-exit { display: block; }
+
 /* Live encoder quality, reported by the streamer. The bands are the usual
    broadcast read on a quantiser: low is good. Red is deliberately not used -
    a quantiser is information, not a fault. */
@@ -265,6 +297,43 @@ html, body {
 .qp-chip[data-qp='fair'] b { color: var(--bar-yellow); }
 .qp-chip[data-qp='low'] b { color: var(--bar-magenta); }
 
+/* How many players the feed is serving, as reported by the signaller. */
+.viewers-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.32rem;
+    padding: 0.25rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: #262421;
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.viewers-chip b {
+    font-size: 0.8rem;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+}
+
+.viewers-chip svg {
+    width: 0.95rem;
+    height: 0.95rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.viewers-chip svg circle { fill: currentColor; stroke: none; }
+.viewers-chip[hidden] { display: none; }
+
 /* Wall tiles embed the player with no chrome at all: the tile supplies the labels. */
 #shell.is-bare #topbar { display: none; }
 
@@ -281,6 +350,17 @@ html, body {
     min-height: 0;
     background: #000;
 }
+
+/* --- Fullscreen ------------------------------------------------------------
+   Fullscreen expands the stage, so the picture fills the screen with the bar
+   laid over it and the loader and help card still able to appear up there. The
+   bar keeps its idle behaviour: once it has slid away the pointer goes with it,
+   and the first movement of the mouse brings both back. */
+
+/* The library writes an inline `cursor: default` on the video's wrapper element, so the
+   descendant rule needs !important to reach the picture and anything stacked over it. */
+html.is-fullscreen #shell.is-chrome-hidden #stage,
+html.is-fullscreen #shell.is-chrome-hidden #stage * { cursor: none !important; }
 
 /* --- Staged loading overlay ---------------------------------------------
    Sits above the library's own overlays (z-index 30) and reports which
@@ -953,6 +1033,9 @@ kbd {
 
     /* So does the panel's tally light. */
     #stats-panel .panel-dot.is-live { animation: none; }
+
+    /* The bar's tally keeps its colour, it just stops pulsing. */
+    .state-dot { animation: none; }
 
     /* The chrome still hides itself, it just does not slide. */
     #topbar { transition: none; }

@@ -482,15 +482,18 @@ document.body.onload = function () {
     // The player chrome is deliberately minimal: no connection indicator, no settings panel, and
     // the two remaining triggers live in our own top bar rather than the library's floating controls.
     // Stream quality follows what the server sends, so nothing here lets a viewer retune it.
+    // Fullscreen is wired up further down rather than handed to the library, so that it can be given
+    // the stage (picture plus chrome) instead of the picture box on its own.
     const fullscreenButton = document.getElementById('fullscreenToggle');
     const statsButton = document.getElementById('statsToggle');
 
     const application = new Application({
         stream,
         onColorModeChanged: (isLightMode) => PixelStreamingApplicationStyles.setColorMode(isLightMode),
-        fullScreenControlsConfig: fullscreenButton
-            ? { creationMode: UIElementCreationMode.UseCustomElement, customElement: fullscreenButton }
-            : undefined,
+        // Fullscreen is ours, not the library's. Its button expands the element it is handed, and
+        // the library hands itself #playerUI - the picture box without the bar. Expanding the stage
+        // instead keeps the bar, the loader and the help card on screen for the whole session.
+        fullScreenControlsConfig: { creationMode: UIElementCreationMode.Disable },
         statsPanelConfig: statsButton
             ? {
                   isEnabled: true,
@@ -542,6 +545,8 @@ document.body.onload = function () {
     const helpClose = document.getElementById('helpClose');
     const qpChip = document.getElementById('qpChip');
     const qpValueEl = document.getElementById('qpValue');
+    const viewersChip = document.getElementById('viewersChip');
+    const viewersValueEl = document.getElementById('viewersValue');
     const stallChip = document.getElementById('stallChip');
     const stallText = document.getElementById('stallText');
     const stallRetry = document.getElementById('stallRetry');
@@ -628,6 +633,45 @@ document.body.onload = function () {
     }
     syncStatsToggle();
 
+    // --- Fullscreen ----------------------------------------------------------
+    // The stage holds the picture and the chrome, so expanding the stage is what gives a viewer the
+    // whole picture with the bar across it - and the bar keeps hiding itself up there, which is the
+    // behaviour a big screen wants. Any pointer movement or keypress brings it back.
+    const fullscreenSupported = 'requestFullscreen' in Element.prototype;
+    const fullscreenActive = () => !!document.fullscreenElement;
+
+    const syncFullscreenState = () => {
+        const active = fullscreenActive() && document.fullscreenElement === stage;
+        document.documentElement.classList.toggle('is-fullscreen', active);
+        fullscreenButton?.classList.toggle('is-active', active);
+        fullscreenButton?.setAttribute('aria-pressed', String(active));
+        if (fullscreenButton) {
+            fullscreenButton.title = active ? 'Leave fullscreen (F)' : 'Fullscreen (F)';
+        }
+        // On a fullscreen stage the bar is the only way back out apart from Esc, so it is shown on
+        // the way in and then left to the same idle timer as everywhere else.
+        wakeChrome();
+    };
+
+    const toggleFullscreen = () => {
+        if (fullscreenActive()) {
+            document.exitFullscreen().catch(() => {
+                /* Already out. */
+            });
+            return;
+        }
+        stage.requestFullscreen().catch(() => {
+            /* The browser refused; the picture simply stays where it is. */
+        });
+    };
+
+    if (fullscreenButton) {
+        fullscreenButton.hidden = !fullscreenSupported;
+        fullscreenButton.addEventListener('click', toggleFullscreen);
+    }
+    document.addEventListener('fullscreenchange', syncFullscreenState);
+    syncFullscreenState();
+
     // --- Information panel ---------------------------------------------------
     // The ui-library builds this panel and rewrites a row every stats tick, always as the bare text
     // "Label: value" in an unclassed div. This pass gives those rows structure - a key, a value, a
@@ -691,6 +735,12 @@ document.body.onload = function () {
     /** Values that only mean "this browser does not expose it", which for our browsers is noise. */
     const hiddenValues = new Set(['chrome only']);
 
+    // The library has no viewer count to show: its "Players" row is only ever written when the
+    // signaller sends one, which ours does not. The count read from the snapshot index (see the
+    // viewer-count block below) is kept here so the panel row and the top bar's chip cannot
+    // disagree; until there is one, the row stays out of the panel rather than reading "—".
+    let knownViewers: number | null = null;
+
     const slugify = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
     // What we last wrote into a row, so a mutation we caused ourselves can be told apart from the
@@ -711,11 +761,15 @@ document.body.onload = function () {
             order: 500
         };
         const unreadable = unreadableValues.has(raw.toLowerCase());
-        const readable = !unreadable;
+        const known = spec.id === 'players' ? knownViewers : null;
+        const readable = known !== null || !unreadable;
         const number = parseFloat(raw.replace(/[^0-9.+-]/g, ''));
 
         row.dataset['stat'] = spec.id;
-        row.classList.toggle('is-hidden', spec.drop === true || hiddenValues.has(raw.toLowerCase()));
+        // The library never fills the viewer row in this deployment, so it stays out of the panel
+        // until the count above has something to say.
+        const viewersRowWithoutData = spec.id === 'players' && known === null;
+        row.classList.toggle('is-hidden', spec.drop === true || hiddenValues.has(raw.toLowerCase()) || viewersRowWithoutData);
         row.style.order = String(spec.order);
 
         const state = readable && spec.state && Number.isFinite(number) ? spec.state(number) : undefined;
@@ -731,7 +785,7 @@ document.body.onload = function () {
 
         const value = document.createElement('span');
         value.className = 'stat-value';
-        value.textContent = readable ? raw : '—';
+        value.textContent = known !== null ? String(known) : readable ? raw : '—';
         if (readable && spec.unit) {
             const unit = document.createElement('span');
             unit.className = 'stat-unit';
@@ -740,7 +794,9 @@ document.body.onload = function () {
         }
 
         row.replaceChildren(key, value);
-        lastRendered.set(row, (key.textContent ?? '') + (value.textContent ?? ''));
+        // The known count is part of the fingerprint: when it moves, the row is rebuilt even
+        // though the library has not touched it.
+        lastRendered.set(row, (key.textContent ?? '') + (value.textContent ?? '') + (known ?? ''));
     };
 
     /** Rebuilds a row only when the library has actually written something new. */
@@ -899,6 +955,9 @@ document.body.onload = function () {
             loaderDetail.textContent = info.detail;
         }
         setStatus(info.status);
+        // The tally light follows the stage: red once the picture is up, amber while a lost feed is
+        // being rebuilt, and plain the rest of the time.
+        chrome?.setAttribute('data-state', next);
         loaderSteps.forEach((step, index) => {
             // Once the loader is live every step has completed, including the final one it is
             // handing over on, so the rail finishes its ramp instead of leaving a dark dot.
@@ -1357,6 +1416,69 @@ document.body.onload = function () {
     stream.addEventListener('videoEncoderAvgQP', (event) => {
         qpValue = typeof event.data?.avgQP === 'number' ? event.data.avgQP : 0;
         renderQp();
+    });
+
+    // --- Viewer count --------------------------------------------------------
+    // How many players are attached to this feed, this page included. The chip stays hidden
+    // until something actually reports a number: an invented zero would be a claim about a
+    // stream the page has not been told anything about yet.
+    const VIEWERS_INDEX_URL = './snapshots';
+    const VIEWERS_POLL_MS = 15000;
+
+    const renderViewers = (count: number) => {
+        if (!viewersChip || !viewersValueEl || !Number.isFinite(count) || count < 0) {
+            return;
+        }
+        viewersValueEl.textContent = String(count);
+        viewersChip.title = count === 1 ? '1 viewer on this feed' : `${count} viewers on this feed`;
+        viewersChip.hidden = false;
+        knownViewers = count;
+        // The Information panel carries the same number in its own row.
+        refreshStatsPanel();
+    };
+
+    // The library reports the count itself whenever a signaller sends one.
+    stream.addEventListener('playerCount', (event) => {
+        const count = event.data?.count;
+        if (typeof count === 'number') {
+            renderViewers(count);
+        }
+    });
+
+    // Ours does not send that message, so the count is read from the snapshot index - the same
+    // index the grid uses for its "most watched" sort, so the tile and the chip agree. It is a
+    // nicety rather than part of the picture: if it cannot be read, the chip simply stays off.
+    const readViewers = async () => {
+        if (!viewersChip || !requestedFeed || document.hidden) {
+            return;
+        }
+        try {
+            const response = await fetch(VIEWERS_INDEX_URL, { headers: { accept: 'application/json' } });
+            if (!response.ok) {
+                return;
+            }
+            const index = (await response.json()) as { snapshots?: Array<{ sfuId?: string; players?: number }> };
+            const entry = (index.snapshots ?? []).find(stream => stream.sfuId === requestedFeed);
+            if (entry && typeof entry.players === 'number') {
+                renderViewers(entry.players);
+            }
+        } catch {
+            /* No index reachable; the chip just keeps whatever it last showed. */
+        }
+    };
+
+    void readViewers();
+    window.setInterval(() => {
+        void readViewers();
+    }, VIEWERS_POLL_MS);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            void readViewers();
+        }
+    });
+    // This page counts as a viewer, so the number is re-read once the picture is up.
+    stream.addEventListener('videoInitialized', () => {
+        void readViewers();
     });
 
     // --- Picture in picture --------------------------------------------------

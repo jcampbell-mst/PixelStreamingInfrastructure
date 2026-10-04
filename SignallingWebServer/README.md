@@ -193,9 +193,9 @@ The player is meant to be driven from a desk, so the keys are the whole UI: `m` 
 
 ### Player chrome
 
-The bar across the top is the whole of the player's own UI: back to the grid, the stream name, the connection state, and four buttons — sound, statistics, picture-in-picture, and fullscreen. It floats *over* the video rather than sitting above it, so the picture stays full-bleed and hiding the bar never resizes the video element (which would otherwise cost a decode-resolution round trip). Picture-in-picture is hidden entirely on browsers that do not offer it.
+The bar across the top is the whole of the player's own UI: back to the grid, the tally light, the stream name, the connection state, how many viewers are watching, and four buttons — sound, statistics, picture-in-picture, and fullscreen. It floats *over* the video rather than sitting above it, so the picture stays full-bleed and hiding the bar never resizes the video element (which would otherwise cost a decode-resolution round trip). Picture-in-picture is hidden entirely on browsers that do not offer it.
 
-The bar hides itself after three seconds without pointer or keyboard activity and returns on the first pointer move, tap, or key press. It deliberately stays up while the loader is on screen — there is always something to read — and while the statistics panel is open. Under `prefers-reduced-motion` it simply appears and disappears.
+The bar hides itself after three seconds without pointer or keyboard activity and returns on the first pointer move, tap, or key press. It deliberately stays up while the loader is on screen — there is always something to read — and while the statistics panel is open. Under `prefers-reduced-motion` it simply appears and disappears, and the tally light holds its colour without pulsing.
 
 Two library features are switched off on purpose:
 
@@ -203,6 +203,18 @@ Two library features are switched off on purpose:
 * **The settings panel**, removed outright along with its *Commands* section (request keyframe, restart stream). Quality, codec, FPS, and bitrate follow what the server sends; a viewer cannot retune them. A deployment that needs a fixed value sets the usual URL parameters (`PreferredQuality`, `PreferredCodec`, `WebRTCMinBitrate`, `WebRTCMaxBitrate`, `WebRTCFPS`) or `Config` defaults.
 
 The statistics panel is the only library panel left, opened from the pulse button in the bar. Its config supplies an explicit empty `sectionVisibility` map: a panel config *without* that key makes the library's `isSectionEnabled()` call `hasOwnProperty` on `undefined` while the panel is being built, which throws inside the `Application` constructor and takes the entire player down with it. An empty map means "every section enabled", which is what the library does when no config is passed at all.
+
+### Fullscreen
+
+`f`, or the button at the end of the bar, expands the **stage** — the bar, the picture, the loader and the shortcut card together — rather than the video element on its own. That is what keeps the bar usable in fullscreen: a browser only paints the fullscreen element and its descendants, so a bar left outside it would vanish exactly when a viewer wants the exit most. The library's own fullscreen control is switched off for the same reason, because it fullscreens its inner UI element instead.
+
+Once the picture is up, fullscreen behaves like the rest of the page: three seconds without a pointer or a key and the bar slides away, and the pointer goes with it, so nothing sits over the picture. The first movement of the mouse brings both back. The bar stays up while the loader is showing and while a feed is reconnecting, so a viewer never loses the exit on a stream that has gone wrong.
+
+### The tally light and the viewer count
+
+The dot after the back link is the tally, and it reads the same three states the loader rail reports: red and pulsing while the picture is live, amber and pulsing while a dropped feed is being rebuilt, and a plain dim dot while it is still connecting. On a bar that is otherwise grey this is the one piece of state worth a colour, and it is the broadcast convention: red means on air.
+
+The eye chip further along is how many players are attached to this feed, this page included, and the Information panel's **Viewers** row carries the same number. The count comes from the snapshot index (`./snapshots`) — the same source the grid uses for its "most watched" sort, so a tile and the player cannot disagree — refreshed on load, on regaining visibility, when the picture first arrives, when the library itself reports a count, and every fifteen seconds behind that. Reading the index is a workaround for a gap in this stack rather than a preference: the library's `playerCount` event only fires if the signaller sends a `playerCount` message, and this server never sends one, so the library's row would otherwise read "—" for the life of the page. Until a number has actually been read, the chip and the row both stay out of the way rather than claiming an invented zero.
 
 ## Colour-bar theming
 
