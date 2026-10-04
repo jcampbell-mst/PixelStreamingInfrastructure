@@ -201,11 +201,13 @@ Sessions last `--session_days` (30 by default) and are refreshed on use. Failed 
 `setup.bat` in the repository root is the whole install and update path on Windows. On a fresh clone it downloads the bundled Node runtime, installs the workspace dependencies, builds the signalling server, the web pages and the account tools, prepares the SFU, fetches the ffmpeg build that produces the stream previews and CoTURN for viewers behind a strict NAT, and creates the first admin account:
 
 ```
-setup.bat                 prompts for the admin username
-setup.bat --admin alice   creates that admin without prompting
-setup.bat --no-admin      touches no accounts
-setup.bat --skip-build    installs dependencies only
+setup.bat                    prompts for the admin username
+setup.bat --admin <username> creates that account without prompting
+setup.bat --no-admin         touches no accounts
+setup.bat --skip-build       installs dependencies only
 ```
+
+The username is yours to choose: 3 to 32 characters, letters, digits, dot, dash or underscore, starting with a letter or digit, lowercased on the way in. The `alice` in the examples below is only a placeholder.
 
 The build scripts skip `npm run build` in `SignallingWebServer` when `dist/` already exists, so `git pull` on a deployment can leave old compiled code in place and quietly serve the previous version. `setup.bat` always rebuilds, which is why it is also the update path:
 
@@ -224,7 +226,7 @@ The launcher keeps the sign-in settings in one command line:
 start_with_turn.bat --player_port 8080 --reverse_proxy
 ```
 
-`--reverse_proxy` is what tells the server that a proxy such as Caddy is in front of it, so the real client address reaches the sign-in limits and the session cookie is marked `Secure`; `"reverse_proxy": true` in `config.json` does the same thing. Sign-in is on by default, so create the first admin (`node dist/auth/cli.js create-admin alice`, or `setup.bat --admin alice`) before restarting, otherwise nobody can get in.
+`--reverse_proxy` is what tells the server that a proxy such as Caddy is in front of it, so the real client address reaches the sign-in limits and the session cookie is marked `Secure`; `"reverse_proxy": true` in `config.json` does the same thing. Sign-in is on by default, so create the first admin (`node dist/auth/cli.js create-admin <username>`, or `setup.bat --admin <username>`) before restarting, otherwise nobody can get in.
 
 The streamer port, 8888 by default, is not behind the sign-in at all. Anyone who can reach it can publish a stream, so limit it to where streaming happens:
 
