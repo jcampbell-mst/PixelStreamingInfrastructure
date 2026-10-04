@@ -9,6 +9,8 @@
 // Which feeds count as "on screen" is a choice rather than a fact: the picker in the top bar
 // holds that choice, the wall renders it, and it is remembered per browser.
 
+import { registerServiceWorker } from './pwa';
+
 const POLL_MS = 5000;
 const INDEX_POLL_MS = 5000;
 const RECONNECT_MS = 2500;
@@ -823,11 +825,7 @@ applyLayout(layout, false);
 connect();
 
 // Installable shell, as on the other pages: only in a secure context, and never load-bearing.
-if (window.isSecureContext && 'serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {
-        /* no cached shell: the wall is unaffected */
-    });
-}
+registerServiceWorker();
 
 // This file is bundled as a standalone entry, but the other page scripts are plain scripts, so
 // without this marker everything above would sit in the global scope and collide with grid.ts.

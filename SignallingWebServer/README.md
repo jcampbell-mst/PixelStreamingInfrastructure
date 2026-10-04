@@ -254,7 +254,7 @@ It also disables itself when the machine cannot afford it:
 * `html.calm` is applied when the measured frame rate drops below 48 fps, or at load time when WebGL reports a software renderer. The orbs and the montage are then removed and replaced with a static gradient.
 * `html.nowash` is applied first, while the page is still settling, when the frame rate drops below 58 fps. Only the montage goes away; the orbs stay. Fading the montage is the cheaper concession, so it is tried before giving up on the backdrop entirely.
 * `grid.html?fx=off` forces calm mode, `grid.html?fx=nowash` keeps the orbs but never shows the montage, and `grid.html?fx=on` keeps the backdrop on regardless of the measurements.
-* The topbar's **Backdrop** button cycles Auto / On / No montage / Off at runtime. The choice is stored in `localStorage` under `ps-grid-fx`, and an explicit `?fx=` in the URL overrides it for that page load.
+* The **Backdrop** row in the topbar's settings menu cycles Auto / On / No montage / Off at runtime. The choice is stored in `localStorage` under `ps-grid-fx`, and an explicit `?fx=` in the URL overrides it for that page load.
 
 ### Grid operators' controls
 
@@ -264,6 +264,11 @@ The grid carries a few controls for someone who watches the same feeds all day r
 * **Sort** by name, by liveness (`Live`, then `Idle`, then `Unknown`) or by viewer count, stored under `ps-grid-sort`.
 * **Drop and return alerts.** A feed that stops, or comes back, puts a line in the alert rail below the grid and can also raise a desktop notification (`ps-grid-alert-notify`) and a short tone (`ps-grid-alert-sound`). The alerts are deliberately damped: nothing is reported for the first eight seconds after the page loads, a feed has to hold its new state for fifteen seconds before it is announced, and each feed is announced at most once every forty-five seconds, so a flapping streamer cannot turn the rail into noise. Notifications need a secure origin, so on plain HTTP the button says why it is unavailable and only the rail is used.
 * **Previews load only for tiles that are on screen.** Every tile is observed with an `IntersectionObserver`, so a tile scrolled out of view fetches nothing. An image that fails keeps the frame it already had and retries shortly afterwards, because a preview caught mid-write is not a stream that has gone away.
+* **Hide idle feeds** (`ps-grid-hide-idle`) drops every feed with no frame coming from the grid until it is switched back off, which is what makes twelve feeds and four live ones readable at a glance.
+* **Refresh previews** asks for every visible preview again immediately, for the case where a tile is showing a frame that was taken before something on the streaming side was changed.
+* **Reset preferences** clears the stored choices above and reloads, so a grid that has been tuned into something odd can be put back to its defaults without hunting through browser storage.
+
+These live in the topbar's settings menu — a `<details>` panel next to the search box — rather than as a row of buttons, because the controls that are used once a week should not be competing with the search box and the multiviewer link for space. The account control beside it is a plain `<a href="/account">`: it works with no script at all, and it is the only thing in the bar that leads off the page.
 
 ## Multiviewer wall
 
@@ -363,9 +368,11 @@ Two rules keep the theme from getting in the way of the job:
 
 ## Installable app and its offline shell
 
-The pages are a small PWA. `manifest.webmanifest` gives the app a name, the theme colour (`#0d0f12`) and three icons including a maskable one, and `sw.js` precaches the app shell — `grid.html`, `player.html`, `wall.html`, the three bundles, the three stylesheets, the icons and the manifest — so the pages open instantly and still render something sensible while the signalling server is briefly unreachable.
+The pages are a small PWA. `manifest.webmanifest` gives the app a name, the theme colour (`#0d0f12`) and three icons including a maskable one, and `sw.js` caches the app shell — `grid.html`, `player.html`, `wall.html`, the icons and the manifest — so the pages open instantly and still render something sensible while the signalling server is briefly unreachable.
 
-Nothing live is ever cached: the streamer list, the snapshot index, the snapshot JPEGs themselves and every WebRTC or signalling socket go to the network every time, because a stale preview or a stale feed list would be worse than no preview at all. The bundles are emitted with stable names, so `copy-webpack-plugin` stamps each build into the cache name and the previous cache is dropped on activation.
+Nothing live is ever cached: the streamer list, the snapshot index, the snapshot JPEGs themselves and every WebRTC or signalling socket go to the network every time, because a stale preview or a stale feed list would be worse than no preview at all.
+
+The scripts and stylesheets are the exception to the cache, on purpose. A page that loads fresh while the script answering it comes from the previous build looks exactly like a broken control — the button is on screen and nothing happens when it is pressed — so the bundles and stylesheets are emitted with content hashes (`grid.<hash>.js`, `css/grid.<hash>.css`) and are answered from the network first, with the cache only used when the server cannot be reached at all. `copy-webpack-plugin` also stamps each build into the cache name, so the previous cache is dropped on activation.
 
 Service workers, notifications, Wake Lock and picture-in-picture all need a *trusted* origin. `http://localhost` counts; any other host name needs `https://`. `make_cert.bat` creates a local certificate authority and a server certificate covering the loopback names this app is used on, and `start_local.bat --https` then serves the frontend over TLS:
 

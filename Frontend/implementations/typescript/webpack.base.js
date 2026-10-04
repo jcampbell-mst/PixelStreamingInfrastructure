@@ -21,8 +21,11 @@ const pwaPlugins = [
 			{
 				from: './pwa/sw.js',
 				to: 'sw.js',
-				// Bundles are emitted with stable names, so the cache name is the only thing that
-				// can date a build. Stamping it here means each build invalidates the old cache.
+				// The stamp dates the build so each one invalidates the previous cache. The cache
+				// name is not the only thing that dates a build - the bundles carry a content
+				// hash too (see `output.filename`) - but stamping it here is what makes a new
+				// worker differ from the one that is already installed, and a worker that does
+				// not differ is never re-installed.
 				transform: (content) => content.toString().replace(/__PS_VERSION__/g, Date.now().toString()),
 			},
 			{ from: './src/assets/images/icon-192.png', to: 'images/icon-192.png' },
@@ -92,7 +95,10 @@ module.exports = {
           test: /\.css$/,
           type: 'asset/resource',
           generator: {
-            filename: 'css/[name][ext]'
+            // Content-hashed like the bundles, and for the same reason: a cache keyed by path
+            // can never hand a page the previous build's stylesheet. The reference in the
+            // emitted html is rewritten to match by html-loader.
+            filename: 'css/[name].[contenthash:8][ext]'
           }
         },
         {
@@ -108,7 +114,10 @@ module.exports = {
       extensions: ['.tsx', '.ts', '.js', '.svg', '.json'],
     },
     output: {
-      filename: '[name].js',
+      // Content-hashed, which is what keeps a cached copy from outliving the build it came
+      // from: a new page asks for a name that no existing cache holds, so the request can only
+      // be answered by the server. HtmlWebpackPlugin injects the matching name into every page.
+      filename: '[name].[contenthash:8].js',
       library: 'epicgames-frontend',
       libraryTarget: 'umd',
       path: process.env.WEBPACK_OUTPUT_PATH ? path.resolve(process.env.WEBPACK_OUTPUT_PATH) : path.resolve(__dirname, '../../../SignallingWebServer/www'),

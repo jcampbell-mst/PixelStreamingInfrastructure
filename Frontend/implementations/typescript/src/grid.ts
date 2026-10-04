@@ -1,6 +1,8 @@
 // Stream grid: lists the streams the signalling server knows about, previews
 // each one with its snapshot, and links through to the player.
 
+import { registerServiceWorker } from './pwa';
+
 const POLL_MS = 5000;
 const RECONNECT_MS = 2000;
 // The snapshot index reports how old each preview is, so previews are reloaded
@@ -50,6 +52,7 @@ const PIN_STORE_KEY = 'ps-grid-pins';
 const SORT_STORE_KEY = 'ps-grid-sort';
 const NOTIFY_STORE_KEY = 'ps-grid-alert-notify';
 const SOUND_STORE_KEY = 'ps-grid-alert-sound';
+const HIDE_IDLE_STORE_KEY = 'ps-grid-hide-idle';
 // A feed has to have been up for a while before losing it is worth interrupting
 // an operator for, and the same feed is not announced twice in a row inside the
 // cooldown, so a feed that flaps reads as one event rather than a stream of them.
@@ -238,12 +241,20 @@ const notifyEl = document.getElementById('notify') as HTMLButtonElement;
 const soundEl = document.getElementById('sound') as HTMLButtonElement;
 const alertsEl = document.getElementById('alerts') as HTMLElement;
 const profileEl = document.getElementById('profile') as HTMLElement;
-const profileButtonEl = document.getElementById('profileButton') as HTMLButtonElement;
+const profileButtonEl = document.getElementById('profileButton') as HTMLAnchorElement;
 const profileMenuEl = document.getElementById('profileMenu') as HTMLElement;
 const profileAvatarEl = document.getElementById('profileAvatar') as HTMLElement;
 const profileNameEl = document.getElementById('profileName') as HTMLElement;
 const profileMetaEl = document.getElementById('profileMeta') as HTMLElement;
 const profileAdminEl = document.getElementById('profileAdmin') as HTMLElement;
+// The settings panel is the one part of the bar that this script could be reading against an
+// older page: a bundle can be newer than the markup it landed in (a cached page, a half
+// finished deploy). Everything else in the bar has been there since the grid did, so these are
+// the only lookups allowed to come back empty.
+const settingsEl = document.getElementById('settingsMenu') as HTMLDetailsElement | null;
+const settingsButtonEl = document.getElementById('settingsButton') as HTMLElement | null;
+const hideIdleEl = document.getElementById('hideidle') as HTMLInputElement | null;
+const resetPrefsEl = document.getElementById('resetprefs') as HTMLButtonElement | null;
 
 const tiles = new Map<string, Tile>();
 // The pin set and the sort outlive the tiles, because a pinned feed that is
@@ -252,6 +263,9 @@ const pinned = readPins();
 let sortMode: SortMode = readSortMode(readStore(SORT_STORE_KEY));
 let notifyPref = readStore(NOTIFY_STORE_KEY) === 'on';
 let soundPref = readStore(SOUND_STORE_KEY) === 'on';
+// Idle feeds are still listed by the signalling server, so hiding them is a view choice and
+// not a filter on the list itself: the tile is kept and simply not shown.
+let hideIdle = readStore(HIDE_IDLE_STORE_KEY) === 'on';
 // Drop/return bookkeeping is kept per feed rather than per tile: a feed that
 // disconnects loses its tile, and its return still has to be a return.
 const feedAlerts = new Map<string, FeedAlert>();
@@ -1131,6 +1145,9 @@ function applyIndex(index: SnapshotIndex): void {
         }
     }
 
+    // Liveness is what the idle filter reads, so the filter has to be re-run after each pass
+    // and not only when the search box changes.
+    applyFilter();
     applySort();
     updateSubtitle();
 }
@@ -1185,14 +1202,28 @@ function updateSubtitle(): void {
 function applyFilter(): void {
     const query = searchEl.value.trim().toLowerCase();
     let visible = 0;
+    let hiddenIdle = 0;
     for (const tile of tiles.values()) {
-        const match = query.length === 0 || tile.id.toLowerCase().includes(query);
-        tile.el.hidden = !match;
-        if (match) {
+        const named = query.length === 0 || tile.id.toLowerCase().includes(query);
+        const idle = hideIdle && tile.liveness === 'idle';
+        tile.el.hidden = !named || idle;
+        if (named && idle) {
+            hiddenIdle++;
+        }
+        if (named && !idle) {
             visible++;
         }
     }
-    noResultsEl.hidden = !(tiles.size > 0 && visible === 0);
+    const nothingShown = tiles.size > 0 && visible === 0;
+    noResultsEl.hidden = !nothingShown;
+    if (nothingShown) {
+        // An empty grid is either the filter or the idle switch, and saying which one it was
+        // saves the operator hunting for a search box they never typed in.
+        noResultsEl.textContent =
+            query.length === 0 && hiddenIdle > 0
+                ? 'Every stream is idle — turn off "Hide idle streams" in settings to see them.'
+                : 'No streams match that filter.';
+    }
 }
 
 function render(ids: string[]): void {
@@ -1376,40 +1407,111 @@ document.addEventListener('visibilitychange', () => {
 emptyEl.hidden = false;
 sortEl.value = sortMode;
 updateAlertButtons();
+if (hideIdleEl) {
+    hideIdleEl.checked = hideIdle;
+}
 connect();
 window.setTimeout(() => watchFrameRate(false), 2000);
 window.setTimeout(() => watchFrameRate(true), 20000);
 
+// Site settings. The panel is a `<details>`, so the disclosure itself is the browser's rather
+// than a class, and the controls inside it are reachable and functional even if this script
+// never runs.
+function setSettingsOpen(open: boolean): void {
+    if (settingsEl) {
+        settingsEl.open = open;
+    }
+}
+
 // Account menu. This page is a static file, so nothing in its markup knows who is
 // reading it: it opens regardless, and the server's answer only decides the label
-// and whether administration is offered. A failed or signed-out answer leaves the
-// button as the markup built it, which still links to the account page, and that
-// is the part that has to work.
+// and whether administration is offered. The trigger is a link to the account page, so the one
+// case where the wiring below is missing - a cached page running against a newer bundle, or a
+// script that failed - still leaves a control that goes somewhere. The menu is the
+// enhancement, which is why the navigation is only cancelled on the page that has a menu to
+// put in its place, and only for a plain left click: opening the account page in a new tab is
+// still the browser's to do.
 function setProfileOpen(open: boolean): void {
     profileMenuEl.hidden = !open;
     profileButtonEl.setAttribute('aria-expanded', String(open));
 }
 
-profileButtonEl.addEventListener('click', () => {
+profileButtonEl.addEventListener('click', (ev) => {
+    if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey || ev.button !== 0) {
+        return;
+    }
+    ev.preventDefault();
+    setSettingsOpen(false);
     setProfileOpen(profileMenuEl.hidden);
 });
 
-// Closing on a click elsewhere, and on Escape, covers the mouse and the keyboard;
-// there is no modal behaviour to trap, because the menu is a disclosure of links.
+// Only one disclosure at a time: both hang in the same corner, and the settings panel is wide
+// enough to sit over the account chip.
+if (settingsEl) {
+    settingsEl.addEventListener('toggle', () => {
+        if (settingsEl.open) {
+            setProfileOpen(false);
+        }
+    });
+}
+
+// Closing on a click elsewhere, and on Escape, covers the mouse and the keyboard; there is no
+// modal behaviour to trap, because both menus are disclosures of controls and links.
 document.addEventListener('click', (ev) => {
     const target = ev.target as Node | null;
-    if (profileMenuEl.hidden || (target && profileEl.contains(target))) {
+    if (!target) {
         return;
     }
-    setProfileOpen(false);
+    if (!profileMenuEl.hidden && !profileEl.contains(target)) {
+        setProfileOpen(false);
+    }
+    if (settingsEl && settingsEl.open && !settingsEl.contains(target)) {
+        settingsEl.open = false;
+    }
 });
 
 document.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Escape' && !profileMenuEl.hidden) {
+    if (ev.key !== 'Escape') {
+        return;
+    }
+    if (settingsEl && settingsEl.open) {
+        settingsEl.open = false;
+        settingsButtonEl?.focus();
+    }
+    if (!profileMenuEl.hidden) {
         setProfileOpen(false);
         profileButtonEl.focus();
     }
 });
+
+// The two settings that are choices rather than state. Both go through the same store helper as
+// the rest of the page, so a blocked store only costs the memory of the choice.
+if (hideIdleEl) {
+    hideIdleEl.addEventListener('change', () => {
+        hideIdle = hideIdleEl.checked;
+        writeStore(HIDE_IDLE_STORE_KEY, hideIdle ? 'on' : 'off');
+        applyFilter();
+    });
+}
+
+if (resetPrefsEl) {
+    resetPrefsEl.addEventListener('click', () => {
+        if (!window.confirm('Reset the saved grid preferences — sort, pinned streams, backdrop, alerts and the idle filter?')) {
+            return;
+        }
+        try {
+            for (const key of Object.keys(window.localStorage)) {
+                if (key.startsWith('ps-grid-')) {
+                    window.localStorage.removeItem(key);
+                }
+            }
+        } catch {
+            // A blocked store has nothing to reset.
+        }
+        // The defaults only apply at load time, so the reset is a reload.
+        window.location.reload();
+    });
+}
 
 interface ViewerSession {
     username?: string;
@@ -1437,3 +1539,7 @@ void fetch('/account/session', { headers: { accept: 'application/json' } })
     .catch(() => {
         // Left as it was: the account link still works.
     });
+
+// The shell cache, registered from this page too so that whoever lands on the grid keeps it
+// current. Nothing here is load-bearing: see src/pwa.ts.
+registerServiceWorker();

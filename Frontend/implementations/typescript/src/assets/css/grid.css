@@ -467,6 +467,115 @@ a.button {
     border-color: rgba(240, 169, 59, 0.3);
 }
 
+/* Settings menu ----------------------------------------------------------- */
+
+/* Sort, refresh, the alert toggles and the backdrop choice used to be separate
+   controls in the bar, which wrapped onto a second line at ordinary window
+   widths. They live in one disclosure now, so the bar is a fixed row at any
+   width and the settings are one click away rather than spread across it. */
+
+.menu {
+    position: relative;
+}
+
+/* A `<details>` summary arrives with the platform's triangle marker and a text
+   baseline, neither of which belongs on a control styled as a button. */
+.menu-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    list-style: none;
+    user-select: none;
+}
+
+.menu-button::-webkit-details-marker {
+    display: none;
+}
+
+.menu-button::marker {
+    content: "";
+}
+
+.menu-button:hover,
+.menu[open] > .menu-button {
+    background: var(--button-hover);
+    border-color: var(--border-strong);
+}
+
+.menu-button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.menu-panel {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    right: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    /* Sized to the longest label ("Backdrop: Smart") rather than to the bar, and
+       capped against the viewport so it cannot overflow a narrow window. */
+    width: 15rem;
+    max-width: calc(100vw - 1.5rem);
+    padding: 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: var(--ctl-radius);
+    background: var(--surface);
+    box-shadow: var(--tile-shadow-hover);
+}
+
+/* The controls are a column of rows here, so the ones that were sized as pills
+   in the bar become full-width rows with their text against the left edge. */
+.menu-action {
+    height: 34px;
+    text-align: left;
+}
+
+.menu-select {
+    height: 38px;
+    width: 100%;
+}
+
+.menu-select select {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
+}
+
+.menu-check {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 7px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.menu-check:hover {
+    background: var(--button-hover);
+}
+
+.menu-check input {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+/* Kept apart from the choices above it, because it throws them all away. */
+.menu-danger {
+    margin-top: 0.35rem;
+    color: var(--dim);
+}
+
+.menu-danger:hover {
+    color: var(--warn);
+}
+
 /* The account menu is the one place the static grid meets the server-rendered
    sign-in pages, so it is styled as the last control in the bar rather than as
    part of the grid. */

@@ -6,6 +6,8 @@ export * from '@epicgames-ps/lib-pixelstreamingfrontend-ui-ue5.5';
 import { Config, PixelStreaming, Logger, LogLevel, Flags } from '@epicgames-ps/lib-pixelstreamingfrontend-ue5.5';
 import { Application, PixelStreamingApplicationStyle, UIElementCreationMode } from '@epicgames-ps/lib-pixelstreamingfrontend-ui-ue5.5';
 
+import { registerServiceWorker } from './pwa';
+
 // The palettes below mirror the stream grid so the player reads as part of the same app. They carry
 // the studio tally theme to the parts of the player the ui-library owns, chiefly the Information
 // panel, which paints itself from --color0/2/3/7 rather than from player.css.
@@ -1627,11 +1629,7 @@ document.body.onload = function () {
 
     // Installable shell. A service worker only exists in a secure context (https, or localhost),
     // so on a plain-HTTP LAN address this is simply skipped - the player must never depend on it.
-    if (window.isSecureContext && 'serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js').catch(() => {
-            /* no cached shell: the page is unaffected */
-        });
-    }
+    registerServiceWorker();
 
     window.pixelStreaming = stream;
     window.pixelStreamingApplication = application;
