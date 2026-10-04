@@ -19,6 +19,10 @@
         <span id="wallStatus" class="wall-pill">Connecting to the signalling server…</span>
         <div class="wall-spacer"></div>
         <span id="tileCount" class="wall-fact" hidden></span>
+        <button id="feedToggle" type="button" aria-expanded="false" aria-controls="feedPanel" title="Choose which streams are on the wall">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
+            <span class="feed-toggle-label">Feeds</span>
+        </button>
         <div class="layout" role="group" aria-label="Layout">
             <button type="button" data-layout="auto" class="is-active">Auto</button>
             <button type="button" data-layout="1" title="One feed, full size">1</button>
@@ -39,5 +43,24 @@
         <p class="empty-title">No streams yet</p>
         <p class="empty-body">Waiting for a streamer to connect to the signalling server. This page fills itself in as soon as one appears.</p>
     </div>
+
+    <!-- The stream picker. A drawer rather than a mode, because the wall has to stay
+         watchable while the choice is being made: opening it covers the left column of
+         tiles and nothing else. -->
+    <aside id="feedPanel" class="feed-panel" aria-label="Choose which streams are on the wall" aria-hidden="true">
+        <div class="feed-head">
+            <h2>Streams on the wall</h2>
+            <button id="feedClose" type="button" title="Close (Esc)" aria-label="Close the stream picker">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
+        </div>
+        <div class="feed-picks">
+            <button id="feedAll" type="button" title="Show every stream, including ones that connect later">All</button>
+            <button id="feedLive" type="button" title="Keep only the streams that are sending media right now">Live only</button>
+            <button id="feedNone" type="button" title="Take every stream off the wall">None</button>
+        </div>
+        <ul id="feedList" class="feed-list"></ul>
+        <p id="feedNote" class="feed-note"></p>
+    </aside>
 </body>
 </html>

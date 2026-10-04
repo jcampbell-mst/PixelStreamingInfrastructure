@@ -18,6 +18,9 @@
     --wash-w: 42%;
     --wash-opacity: 0.13;
 
+    /* Shared by the bar and the drawer that hangs from it. */
+    --bar-h: 3rem;
+
     --bar-grey: #bfbfbf;
     --bar-yellow: #bfbf00;
     --bar-cyan: #00bfbf;
@@ -65,7 +68,7 @@ body {
     align-items: center;
     gap: 1rem;
     flex: 0 0 auto;
-    height: 3rem;
+    height: var(--bar-h);
     padding: 0 0.85rem;
     background: var(--panel);
     border-bottom: 1px solid var(--border);
@@ -217,6 +220,216 @@ body {
     font-size: 0.85rem;
     color: var(--muted);
     white-space: nowrap;
+}
+
+/* --- Stream picker -------------------------------------------------------- */
+
+#feedToggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #1b1a18;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+}
+
+#feedToggle:hover { border-color: var(--bar-cyan); }
+
+#feedToggle svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+}
+
+#feedToggle[aria-expanded='true'] {
+    background: #2e2c28;
+    border-color: var(--bar-cyan);
+}
+
+/* A filter that keeps streams off the wall is easy to forget about, so the button
+   keeps a mark for as long as the choice is a filter rather than "everything". */
+#feedToggle.is-filtered { box-shadow: inset 0 -2px 0 var(--bar-cyan); }
+
+.feed-panel {
+    position: fixed;
+    top: var(--bar-h);
+    bottom: 0;
+    left: 0;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    width: min(19rem, 88vw);
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    box-shadow: 12px 0 28px rgba(0, 0, 0, 0.45);
+    /* Visibility rather than display, so the drawer slides both ways and still
+       sits out of the tab order and off the accessibility tree while closed. */
+    visibility: hidden;
+    opacity: 0;
+    transform: translateX(-102%);
+    transition: transform 0.2s ease, opacity 0.2s ease, visibility 0s linear 0.2s;
+}
+
+.feed-panel.is-open {
+    visibility: visible;
+    opacity: 1;
+    transform: none;
+    transition: transform 0.2s ease, opacity 0.2s ease, visibility 0s;
+}
+
+.feed-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.7rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.feed-head h2 {
+    flex: 1 1 auto;
+    margin: 0;
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+#feedClose {
+    display: inline-flex;
+    padding: 0.25rem;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: #1b1a18;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+#feedClose:hover { color: var(--text); border-color: var(--bar-cyan); }
+
+#feedClose svg {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+}
+
+.feed-picks {
+    display: flex;
+    gap: 0.4rem;
+    padding: 0.6rem 0.7rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.feed-picks button {
+    flex: 1 1 auto;
+    padding: 0.3rem 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: #1b1a18;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.74rem;
+    cursor: pointer;
+}
+
+.feed-picks button:hover:not(:disabled) { color: var(--text); border-color: var(--bar-cyan); }
+.feed-picks button:disabled { opacity: 0.45; cursor: default; }
+
+.feed-list {
+    flex: 1 1 auto;
+    margin: 0;
+    padding: 0.25rem 0;
+    overflow-y: auto;
+    list-style: none;
+}
+
+.feed-row { padding: 0.3rem 0.7rem; }
+
+.feed-pick {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    cursor: pointer;
+}
+
+.feed-pick input {
+    flex: 0 0 auto;
+    margin: 0;
+    accent-color: var(--bar-cyan);
+    cursor: pointer;
+}
+
+.feed-dot {
+    flex: 0 0 auto;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--faint);
+}
+
+.feed-row[data-liveness='live'] .feed-dot { background: var(--bar-green); }
+.feed-row[data-liveness='idle'] .feed-dot { background: var(--bar-red-lit); }
+
+/* A chosen stream that is not connected is a third thing: known absent, rather
+   than "nothing has told us yet". A hollow dot says that without a word. */
+.feed-row[data-liveness='offline'] .feed-dot {
+    background: none;
+    border: 1px solid var(--faint);
+}
+
+.feed-name {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.78rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* On the wall right now, as opposed to merely chosen: with a layout ceiling, the
+   two are not always the same set, and the difference matters to whoever picks. */
+.feed-row.is-shown .feed-name { color: var(--text); font-weight: 600; }
+.feed-row.is-offline .feed-name { font-style: italic; }
+
+.feed-flag {
+    display: none;
+    margin-left: auto;
+    color: var(--bar-cyan);
+    font-size: 0.6rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.feed-row.is-shown .feed-flag { display: inline; }
+
+.feed-meta {
+    padding-left: 2.15rem;
+    color: var(--muted);
+    font-size: 0.7rem;
+}
+
+.feed-none {
+    padding: 0.6rem 0.7rem;
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
+.feed-note {
+    margin: 0;
+    padding: 0.6rem 0.7rem;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.72rem;
+    line-height: 1.45;
 }
 
 /* --- The wall itself ------------------------------------------------------ */
@@ -403,9 +616,11 @@ body {
 @media (max-width: 900px) {
     #wallbar { gap: 0.5rem; padding: 0 0.5rem; }
     #wallbar h1, .wall-clock { display: none; }
+    /* The picker keeps its icon, which is the part that is always reachable. */
+    .feed-toggle-label { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .tile-veil, .tile-label, .tile-sound { transition: none; }
+    .tile-veil, .tile-label, .tile-sound, .feed-panel { transition: none; }
     .tile-veil::before { animation: none; opacity: 0.8; }
 }
