@@ -36,6 +36,19 @@
         var(--bar-red) 0 85.71%,
         var(--bar-blue) 0 100%
     );
+
+    /* The same bars run down the leading edge of the Information panel, so the
+       ramp travels with the page instead of only sitting across its top. */
+    --bars-v: linear-gradient(
+        180deg,
+        var(--bar-grey) 0 14.29%,
+        var(--bar-yellow) 0 28.57%,
+        var(--bar-cyan) 0 42.86%,
+        var(--bar-green) 0 57.14%,
+        var(--bar-magenta) 0 71.43%,
+        var(--bar-red) 0 85.71%,
+        var(--bar-blue) 0 100%
+    );
 }
 
 * { box-sizing: border-box; }
@@ -769,6 +782,154 @@ kbd {
     line-height: 1.4;
 }
 
+/* --- Information panel ---------------------------------------------------
+   The panel is built by the ui-library, so these rules are id-scoped to out-rank
+   the styles the library injects at runtime (see player.ts). It wears the same
+   test card language as the rest of the chrome: bars down the leading edge,
+   uppercase section tags with a bar-coloured dot, and rows laid out as a
+   key/value ledger with hairlines between them. */
+
+#stats-panel {
+    min-width: 20rem;
+    max-width: min(24rem, 94vw);
+    border-left: 0;
+    background-color: rgba(33, 31, 28, 0.94);
+    background-image: var(--bars-v);
+    background-repeat: no-repeat;
+    background-size: var(--barrule) 100%;
+    background-position: left top;
+}
+
+/* The rail takes the first few pixels of the panel, so the content steps in past it. */
+#stats-panel .panel {
+    padding: 3.5rem 1.35rem 1.5rem calc(1.35rem + var(--barrule));
+}
+
+#stats-panel #statsHeading {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding-bottom: 0.6rem;
+    margin-block-end: 1.1rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+/* The tally light: green while the picture is up, dark the rest of the time. */
+#stats-panel .panel-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: #47433e;
+    transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+#stats-panel .panel-dot.is-live {
+    background: var(--bar-green);
+    box-shadow: 0 0 0 0.22rem rgba(0, 191, 0, 0.16);
+    animation: pulseDot 1.8s ease-in-out infinite;
+}
+
+#stats-panel .settingsContainer { margin: 0 0 1.25rem; }
+
+/* A section header with nothing under it is a promise the streamer has not kept. */
+#stats-panel .settingsContainer.is-empty { display: none; }
+
+#stats-panel .settingsHeader {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.45rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+/* Each section is tagged with its own bar colour, the way a test card tags a field. */
+#stats-panel .settingsHeader::before {
+    content: '';
+    width: 0.42rem;
+    height: 0.42rem;
+    flex: 0 0 auto;
+    border-radius: 50%;
+}
+
+#stats-panel #statisticsHeader::before { background: var(--bar-cyan); }
+#stats-panel #latencyStatsHeader::before { background: var(--bar-yellow); }
+
+/* Order comes from the enhancer in player.ts, which keeps the rows grouped by what
+   they describe however late the library happens to report them. */
+#stats-panel .StatsResult {
+    display: flex;
+    flex-direction: column;
+}
+
+#stats-panel .StatsResult > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.9rem;
+    padding: 0.32rem 0;
+    border-bottom: 1px solid rgba(71, 67, 62, 0.5);
+    font-variant-numeric: tabular-nums;
+}
+
+#stats-panel .StatsResult > div:last-child { border-bottom: 0; }
+#stats-panel .StatsResult > div.is-hidden { display: none; }
+
+#stats-panel .stat-key {
+    color: var(--muted);
+    font-size: 0.76rem;
+}
+
+#stats-panel .stat-value {
+    color: var(--text);
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+#stats-panel .stat-unit {
+    margin-left: 0.28em;
+    color: var(--muted);
+    font-size: 0.86em;
+    font-weight: 500;
+}
+
+/* Colour only where the number says something, the same way the bars only carry
+   what a test card means them to carry. */
+#stats-panel .StatsResult > div[data-state='warn'] .stat-value { color: var(--bar-yellow); }
+#stats-panel .StatsResult > div[data-state='bad'] .stat-value { color: var(--bar-red-lit); }
+
+#stats-panel .stats-note {
+    margin: 0 0 1.1rem;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--muted);
+}
+
+#stats-panel .stats-note.is-hidden { display: none; }
+
+#stats-panel .stats-note::before {
+    content: '';
+    display: inline-block;
+    width: 0.42rem;
+    height: 0.42rem;
+    margin-right: 0.5rem;
+    border-radius: 50%;
+    background: var(--bar-magenta);
+    vertical-align: 0.05em;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .mark-dots span,
     .mark-orbit,
@@ -789,6 +950,9 @@ kbd {
 
     /* The stall cue keeps its colour, it just stops throbbing. */
     .chip-dot { animation: none; }
+
+    /* So does the panel's tally light. */
+    #stats-panel .panel-dot.is-live { animation: none; }
 
     /* The chrome still hides itself, it just does not slide. */
     #topbar { transition: none; }

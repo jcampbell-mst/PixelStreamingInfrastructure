@@ -6,27 +6,29 @@ export * from '@epicgames-ps/lib-pixelstreamingfrontend-ui-ue5.5';
 import { Config, PixelStreaming, Logger, LogLevel, Flags } from '@epicgames-ps/lib-pixelstreamingfrontend-ue5.5';
 import { Application, PixelStreamingApplicationStyle, UIElementCreationMode } from '@epicgames-ps/lib-pixelstreamingfrontend-ui-ue5.5';
 
-// The palettes below mirror the stream grid so the player reads as part of the same app.
+// The palettes below mirror the stream grid so the player reads as part of the same app. They carry
+// the studio tally theme to the parts of the player the ui-library owns, chiefly the Information
+// panel, which paints itself from --color0/2/3/7 rather than from player.css.
 const playerDarkPalette = {
-    '--color0': '#171a1ff2',
-    '--color1': '#000000',
-    '--color2': '#e8eaed',
-    '--color3': '#4c8dff',
-    '--color4': '#35b350',
-    '--color5': '#ffab00',
-    '--color6': '#1f242b',
-    '--color7': '#2b313a'
+    '--color0': '#211f1cf2',
+    '--color1': '#0c0b0a',
+    '--color2': '#eeedec',
+    '--color3': '#f2332c',
+    '--color4': '#25e455',
+    '--color5': '#f0a93b',
+    '--color6': '#292724',
+    '--color7': '#37332f'
 };
 
 const playerLightPalette = {
-    '--color0': '#ffffffF2',
-    '--color1': '#000000',
-    '--color2': '#12151a',
-    '--color3': '#2f6fe4',
-    '--color4': '#1f9d43',
-    '--color5': '#e08a00',
-    '--color6': '#eef0f3',
-    '--color7': '#d6d9de'
+    '--color0': '#fdfcfcf2',
+    '--color1': '#f6f5f3',
+    '--color2': '#231f1a',
+    '--color3': '#c81e16',
+    '--color4': '#0f8f34',
+    '--color5': '#a86000',
+    '--color6': '#efeeeb',
+    '--color7': '#e1ded9'
 };
 
 const playerCustomStyles = {
@@ -457,11 +459,16 @@ document.body.onload = function () {
     // controls inside every tile would only add clutter and confusion.
     const bareMode = urlParams.get('Chrome') === '0';
 
+    // Clicking the picture must not capture the cursor. The library's default control scheme locks
+    // the pointer to the video (and hides it) on click; hovering mode leaves the pointer usable and
+    // still forwards every mouse event to the app. URL parameters are read after these initial
+    // settings, so ?HoveringMouse=false restores the locked pointer for a relative-input experience.
     const config = new Config({
         useUrlParams: true,
         initialSettings: {
             [Flags.AutoConnect]: true,
-            [Flags.AutoPlayVideo]: true
+            [Flags.AutoPlayVideo]: true,
+            [Flags.HoveringMouseMode]: true
         }
     });
 
@@ -488,9 +495,13 @@ document.body.onload = function () {
             ? {
                   isEnabled: true,
                   // The library reads section visibility with an unguarded hasOwnProperty call, so a
-                  // panel config without this key throws while the panel is being built. An empty map
-                  // means "every section enabled", which is the library's own out-of-the-box setup.
-                  sectionVisibility: {},
+                  // panel config without this key throws while the panel is being built. Only the two
+                  // read-only sections survive: the latency tests inject traffic into a live feed and
+                  // their "Run Test" buttons do not belong in a production readout.
+                  sectionVisibility: {
+                      'Latency Test': false,
+                      'Data Channel Latency Test': false
+                  },
                   visibilityButtonConfig: {
                       creationMode: UIElementCreationMode.UseCustomElement,
                       customElement: statsButton
@@ -616,6 +627,192 @@ document.body.onload = function () {
         }).observe(uiFeatures, { attributes: true, attributeFilter: ['class'], subtree: true });
     }
     syncStatsToggle();
+
+    // --- Information panel ---------------------------------------------------
+    // The ui-library builds this panel and rewrites a row every stats tick, always as the bare text
+    // "Label: value" in an unclassed div. This pass gives those rows structure - a key, a value, a
+    // unit, and a state colour where the number actually means something - and drops the rows that
+    // carry no usable information, so the panel reads as a readout rather than a debug dump. Each
+    // pass rebuilds a row from the text the library just wrote, so it is idempotent by construction
+    // and never has to fight the library for the DOM.
+    type StatState = 'good' | 'warn' | 'bad';
+
+    interface StatSpec {
+        id: string;
+        label: string;
+        order: number;
+        unit?: string;
+        state?: (value: number) => StatState;
+        /** Rows that are true but tell a viewer nothing, e.g. cumulative counters. */
+        drop?: boolean;
+    }
+
+    const rttState = (value: number): StatState => (value < 80 ? 'good' : value < 160 ? 'warn' : 'bad');
+    const lossState = (value: number): StatState => (value === 0 ? 'good' : value <= 50 ? 'warn' : 'bad');
+    const jitterState = (value: number): StatState => (value < 25 ? 'good' : value < 60 ? 'warn' : 'bad');
+    const latencyState = (value: number): StatState => (value < 90 ? 'good' : value < 180 ? 'warn' : 'bad');
+    // Matches the bands the top bar's QP chip uses, so the two never disagree.
+    const qpState = (value: number): StatState => (value <= 24 ? 'good' : value <= 40 ? 'warn' : 'bad');
+
+    // Keyed by the label the library writes, because that is the only stable handle the row has.
+    const statSpecs: Record<string, StatSpec> = {
+        'Video codec': { id: 'video-codec', label: 'Video codec', order: 10 },
+        'Video resolution': { id: 'resolution', label: 'Resolution', order: 20 },
+        'Video Bitrate (kbps)': { id: 'video-bitrate', label: 'Video', order: 30, unit: 'kbps' },
+        'Framerate': { id: 'framerate', label: 'Framerate', order: 40 },
+        'Video quantization parameter': { id: 'video-qp', label: 'Encoder QP', order: 50, state: qpState },
+        'Audio codec': { id: 'audio-codec', label: 'Audio codec', order: 60 },
+        'Audio Bitrate (kbps)': { id: 'audio-bitrate', label: 'Audio', order: 70, unit: 'kbps' },
+        'Net RTT (ms)': { id: 'rtt', label: 'Network RTT', order: 80, unit: 'ms', state: rttState },
+        'Packets Lost': { id: 'packets-lost', label: 'Packets lost', order: 90, state: lossState },
+        'Frames dropped': { id: 'frames-dropped', label: 'Frames dropped', order: 100, state: lossState },
+        'Duration': { id: 'duration', label: 'Uptime', order: 110 },
+        'Players': { id: 'players', label: 'Viewers', order: 120 },
+        'Controls stream input': { id: 'control-input', label: 'Control input', order: 130 },
+        // Cumulative counters: bitrate, dropped frames and uptime already cover what they say.
+        'Received': { id: 'received', label: 'Received', order: 900, drop: true },
+        'Frames Decoded': { id: 'frames-decoded', label: 'Frames decoded', order: 900, drop: true },
+
+        'Encode latency (ms)': { id: 'latency-encode', label: 'Encode', order: 10, unit: 'ms' },
+        'Packetizer latency (ms)': { id: 'latency-packetize', label: 'Packetize', order: 20, unit: 'ms' },
+        'Pacer latency (ms)': { id: 'latency-pacer', label: 'Pacer', order: 30, unit: 'ms' },
+        'Post-capture to send latency (ms)': { id: 'latency-capture', label: 'Capture to send', order: 40, unit: 'ms' },
+        'Assembly delay (ms)': { id: 'latency-assembly', label: 'Assembly', order: 50, unit: 'ms' },
+        'Decode time (ms)': { id: 'latency-decode', label: 'Decode', order: 60, unit: 'ms' },
+        'Jitter buffer (ms)': { id: 'latency-jitter', label: 'Jitter buffer', order: 70, unit: 'ms', state: jitterState },
+        'Processing delay (ms)': { id: 'latency-processing', label: 'Processing', order: 80, unit: 'ms' },
+        'Total latency (ms)': { id: 'latency-total', label: 'Total', order: 90, unit: 'ms', state: latencyState },
+        // The same hop measured a second way, which only adds a second number to compare.
+        'Post-capture (abs-ct) to send latency (ms)': { id: 'latency-capture-abs', label: 'Capture to send (abs)', order: 900, drop: true }
+    };
+
+    /** Values the library writes when there is nothing to report. */
+    const unreadableValues = new Set(['', 'unknown', "can't calculate", 'n/a', 'nan', '-1']);
+    /** Values that only mean "this browser does not expose it", which for our browsers is noise. */
+    const hiddenValues = new Set(['chrome only']);
+
+    const slugify = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+    // What we last wrote into a row, so a mutation we caused ourselves can be told apart from the
+    // library writing a new value. Without this the observer would loop on its own work.
+    const lastRendered = new WeakMap<HTMLElement, string>();
+
+    const enhanceStatRow = (row: HTMLElement) => {
+        const text = (row.textContent ?? '').trim();
+        const separator = text.indexOf(':');
+        if (separator < 0) {
+            return;
+        }
+        const libraryLabel = text.slice(0, separator).trim();
+        const raw = text.slice(separator + 1).trim();
+        const spec: StatSpec = statSpecs[libraryLabel] ?? {
+            id: slugify(libraryLabel) || 'stat',
+            label: libraryLabel,
+            order: 500
+        };
+        const unreadable = unreadableValues.has(raw.toLowerCase());
+        const readable = !unreadable;
+        const number = parseFloat(raw.replace(/[^0-9.+-]/g, ''));
+
+        row.dataset['stat'] = spec.id;
+        row.classList.toggle('is-hidden', spec.drop === true || hiddenValues.has(raw.toLowerCase()));
+        row.style.order = String(spec.order);
+
+        const state = readable && spec.state && Number.isFinite(number) ? spec.state(number) : undefined;
+        if (state) {
+            row.dataset['state'] = state;
+        } else {
+            delete row.dataset['state'];
+        }
+
+        const key = document.createElement('span');
+        key.className = 'stat-key';
+        key.textContent = spec.label;
+
+        const value = document.createElement('span');
+        value.className = 'stat-value';
+        value.textContent = readable ? raw : '—';
+        if (readable && spec.unit) {
+            const unit = document.createElement('span');
+            unit.className = 'stat-unit';
+            unit.textContent = spec.unit;
+            value.appendChild(unit);
+        }
+
+        row.replaceChildren(key, value);
+        lastRendered.set(row, (key.textContent ?? '') + (value.textContent ?? ''));
+    };
+
+    /** Rebuilds a row only when the library has actually written something new. */
+    const enhanceIfChanged = (row: HTMLElement) => {
+        if (lastRendered.get(row) === (row.textContent ?? '').trim()) {
+            return;
+        }
+        enhanceStatRow(row);
+    };
+
+    const statsPanel = document.getElementById('stats-panel');
+    const statsHeading = document.getElementById('statsHeading');
+    const statsContent = document.getElementById('statsContent');
+
+    // A tally light in the panel's heading: green while the picture is up, dark otherwise.
+    if (statsHeading && !statsHeading.querySelector('.panel-dot')) {
+        const dot = document.createElement('span');
+        dot.className = 'panel-dot';
+        statsHeading.prepend(dot);
+    }
+    const panelDot = statsHeading?.querySelector('.panel-dot') ?? null;
+
+    // Shown only while neither section has a single usable number to report.
+    const statsNote = document.createElement('p');
+    statsNote.className = 'stats-note';
+    statsNote.textContent = 'Waiting for the streamer to report stats…';
+    if (statsContent && !statsContent.querySelector('.stats-note')) {
+        statsContent.prepend(statsNote);
+    }
+
+    const setSectionTitle = (selector: string, title: string) => {
+        const text = document.querySelector<HTMLElement>(`#stats-panel ${selector} > div`);
+        if (text && text.textContent !== title) {
+            text.textContent = title;
+        }
+    };
+
+    const refreshStatsPanel = () => {
+        if (!statsPanel) {
+            return;
+        }
+        setSectionTitle('#statisticsHeader', 'Session');
+        setSectionTitle('#latencyStatsHeader', 'Streamer latency');
+        panelDot?.classList.toggle('is-live', currentStage === 'live');
+
+        let readableRows = 0;
+        statsPanel.querySelectorAll<HTMLElement>('.StatsResult > div').forEach((row) => {
+            enhanceIfChanged(row);
+            if (!row.classList.contains('is-hidden')) {
+                readableRows += 1;
+            }
+        });
+
+        // A section header with nothing under it is just a promise the streamer has not kept yet.
+        statsPanel.querySelectorAll<HTMLElement>('section.settingsContainer').forEach((section) => {
+            const rows = Array.from(section.querySelectorAll<HTMLElement>('.StatsResult > div'));
+            section.classList.toggle('is-empty', !rows.some((row) => !row.classList.contains('is-hidden')));
+        });
+
+        statsNote.classList.toggle('is-hidden', readableRows > 0);
+    };
+
+    // The library rewrites a row's innerHTML on every stats tick, so an observer is the only way to
+    // land our structure before the browser paints it - a timer would leave the plain text on screen
+    // until its next turn. The diff guard in enhanceIfChanged keeps that from looping on our own
+    // writes, and the slow pass behind it covers the readouts that change without touching the DOM.
+    if (statsPanel) {
+        new MutationObserver(() => refreshStatsPanel())
+            .observe(statsPanel, { childList: true, subtree: true, characterData: true });
+    }
+    window.setInterval(refreshStatsPanel, 1000);
+    refreshStatsPanel();
 
     const setStatus = (text: string) => {
         if (connState) {
