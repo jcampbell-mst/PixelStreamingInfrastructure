@@ -1,10 +1,14 @@
 :root {
-    --bg: #0d0f12;
-    --panel: #171a1f;
-    --border: #262b33;
-    --text: #e8eaed;
-    --muted: #8b939f;
-    --accent: #4c8dff;
+    --bg: #191715;
+    --panel: #211f1c;
+    --border: #37332f;
+    --text: #eeedec;
+    --muted: #a59f97;
+    --accent: #f2332c;
+
+    /* The bars rail along the top edge is the same weight as the grid's, so the
+       chrome does not shift when you move between the two pages. */
+    --barrule: 2px;
 
     /* SMPTE 75% colour bars, the palette this whole app is themed around. Each
        connection stage is painted with one of them, so the loading screen reads
@@ -68,10 +72,10 @@ html, body {
     height: 3rem;
     padding: 0 1rem;
     /* Colour bars along the top edge, matching the grid page. */
-    background-color: #171a1fe6;
+    background-color: #211f1ce6;
     background-image: var(--bars);
     background-repeat: no-repeat;
-    background-size: 100% 3px;
+    background-size: 100% var(--barrule);
     background-position: top left;
     border-bottom: 1px solid var(--border);
     backdrop-filter: blur(8px);
@@ -106,7 +110,7 @@ html, body {
 #backToGrid:focus-visible {
     color: var(--text);
     border-color: var(--accent);
-    background: #1f242b;
+    background: #23211f;
     outline: none;
 }
 
@@ -154,7 +158,7 @@ html, body {
     padding: 0.3rem 0.7rem;
     border: 1px solid var(--border);
     border-radius: 999px;
-    background: #1b1f26;
+    background: #262421;
     color: var(--text);
     font: inherit;
     font-size: 0.75rem;
@@ -188,7 +192,7 @@ html, body {
 #fullscreenToggle:hover,
 #fullscreenToggle:focus-visible {
     border-color: var(--accent);
-    background: #232830;
+    background: #2e2c28;
     outline: none;
 }
 
@@ -230,7 +234,7 @@ html, body {
     padding: 0.25rem 0.6rem;
     border: 1px solid var(--border);
     border-radius: 999px;
-    background: #1b1f26;
+    background: #262421;
     color: var(--muted);
     font-size: 0.68rem;
     font-weight: 600;
@@ -282,7 +286,7 @@ html, body {
     padding: 2rem;
     text-align: center;
     pointer-events: none;
-    background: radial-gradient(125% 95% at 50% 42%, #161b22 0%, #0a0c0f 72%);
+    background: radial-gradient(125% 95% at 50% 42%, #262421 0%, #161513 72%);
     transition: opacity 0.45s ease, visibility 0.45s ease;
 }
 
@@ -377,7 +381,7 @@ html, body {
     content: '';
     width: 4.1rem;
     height: 4.1rem;
-    border: 2px dashed rgba(140, 160, 190, 0.34);
+    border: 2px dashed rgba(165, 159, 151, 0.34);
     border-radius: 50%;
 }
 
@@ -439,7 +443,7 @@ html, body {
     height: 0.32rem;
     overflow: hidden;
     border-radius: 999px;
-    background: rgba(140, 160, 190, 0.18);
+    background: rgba(165, 159, 151, 0.18);
 }
 
 .mark-sweep span {
@@ -521,7 +525,7 @@ html, body {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.12em;
-    color: #575e6a;
+    color: #5d5851;
 }
 
 #loaderSteps li {
@@ -544,7 +548,7 @@ html, body {
     width: 0.42rem;
     height: 0.42rem;
     border-radius: 50%;
-    background: #2c333d;
+    background: #37332f;
     transition: background 0.3s ease, opacity 0.3s ease, transform 0.3s ease;
 }
 
@@ -552,7 +556,7 @@ html, body {
     content: '';
     width: 1.5rem;
     height: 1px;
-    background: #2c333d;
+    background: #37332f;
 }
 
 #loaderSteps li.is-done { color: var(--step); opacity: 0.78; }
@@ -580,7 +584,7 @@ html, body {
     padding: 0.45rem 1.05rem;
     border: 1px solid var(--border);
     border-radius: 999px;
-    background: #1b1f26;
+    background: #262421;
     color: var(--text);
     font: inherit;
     font-size: 0.78rem;
@@ -594,7 +598,7 @@ html, body {
 #loaderRetry:hover,
 #loaderRetry:focus-visible {
     border-color: var(--accent);
-    background: #232830;
+    background: #2e2c28;
     outline: none;
 }
 
@@ -613,9 +617,9 @@ html, body {
     gap: 0.6rem;
     max-width: calc(100% - 2.2rem);
     padding: 0.4rem 0.65rem 0.4rem 0.75rem;
-    border: 1px solid #333b47;
+    border: 1px solid #47433e;
     border-radius: 999px;
-    background: rgba(23, 26, 31, 0.92);
+    background: rgba(33, 31, 28, 0.92);
     color: var(--text);
     font-size: 0.78rem;
     font-weight: 600;
@@ -644,9 +648,9 @@ html, body {
 .stage-chip button {
     pointer-events: auto;
     padding: 0.25rem 0.6rem;
-    border: 1px solid #333b47;
+    border: 1px solid #47433e;
     border-radius: 999px;
-    background: #1b1f26;
+    background: #262421;
     color: var(--text);
     font: inherit;
     font-size: 0.72rem;
@@ -658,7 +662,7 @@ html, body {
 .stage-chip button:hover,
 .stage-chip button:focus-visible {
     border-color: var(--accent);
-    background: #232830;
+    background: #2e2c28;
     outline: none;
 }
 
@@ -679,9 +683,9 @@ html, body {
     z-index: 55;
     width: min(20rem, calc(100% - 2.2rem));
     padding: 1rem 1.1rem 0.9rem;
-    border: 1px solid #333b47;
+    border: 1px solid #47433e;
     border-radius: 0.9rem;
-    background: rgba(20, 23, 28, 0.96);
+    background: rgba(33, 31, 28, 0.96);
     box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
@@ -730,9 +734,9 @@ html, body {
 .help-card button {
     width: 100%;
     padding: 0.42rem;
-    border: 1px solid #333b47;
+    border: 1px solid #47433e;
     border-radius: 0.6rem;
-    background: #1b1f26;
+    background: #262421;
     color: var(--text);
     font: inherit;
     font-size: 0.75rem;
@@ -744,7 +748,7 @@ html, body {
 .help-card button:hover,
 .help-card button:focus-visible {
     border-color: var(--accent);
-    background: #232830;
+    background: #2e2c28;
     outline: none;
 }
 
@@ -754,10 +758,10 @@ kbd {
     justify-content: center;
     min-width: 1.7rem;
     padding: 0.15rem 0.4rem;
-    border: 1px solid #333b47;
+    border: 1px solid #47433e;
     border-bottom-width: 2px;
     border-radius: 0.4rem;
-    background: #12161b;
+    background: #1b1a18;
     color: var(--text);
     font-family: inherit;
     font-size: 0.7rem;

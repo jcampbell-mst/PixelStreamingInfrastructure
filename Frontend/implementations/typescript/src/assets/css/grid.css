@@ -1,24 +1,39 @@
 :root {
-    --bg: #0a0c0f;
-    --surface: #14181e;
-    --surface-2: #181d24;
-    --border: #232932;
-    --border-strong: #333b47;
-    --topbar-bg: rgba(10, 12, 15, 0.82);
-    --input-bg: #12161b;
-    --button-bg: #1a1f26;
-    --button-hover: #222831;
-    --text: #e9eef5;
-    --dim: #9aa4b2;
-    --faint: #6b7684;
-    --accent: #4c8dff;
-    --accent-soft: rgba(76, 141, 255, 0.22);
-    --live: #3ddc71;
+    /* Studio tally. The surround is a warm charcoal - the colour a gallery is
+       actually framed in - so that the only saturated things on the page are the
+       colour bars and the state lights. Every neutral below is one family: hue
+       34, 7% saturation, stepping through lightness, so nothing clashes. */
+    --bg: #191715;
+    --surface: #211f1c;
+    --surface-2: #292724;
+    --border: #37332f;
+    --border-strong: #47433e;
+    --topbar-bg: rgba(25, 23, 21, 0.82);
+    --input-bg: #1b1a18;
+    --button-bg: #23211f;
+    --button-hover: #2e2c28;
+    --text: #eeedec;
+    --dim: #a59f97;
+    --faint: #80796f;
+    /* The tally light. This is the one saturated red on the page and it means
+       what a tally means in a gallery: this one is selected. */
+    --accent: #f2332c;
+    --accent-soft: rgba(242, 51, 44, 0.22);
+    --live: #25e455;
     --warn: #f0a93b;
     --warn-soft: rgba(240, 169, 59, 0.12);
-    --danger: #f0616a;
+    --danger: #f2332c;
     --tile-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
     --tile-shadow-hover: 0 12px 30px rgba(0, 0, 0, 0.45);
+
+    /* Geometry and the two bar treatments, gathered here so the whole mix can be
+       dialled from one place. */
+    --radius: 14px;
+    --ctl-radius: 10px;
+    --pill-radius: 999px;
+    --barrule: 2px;
+    --wash-w: 42%;
+    --wash-opacity: 0.13;
 
     /* SMPTE 75% colour bars. This is a broadcast tool, so the test card is the
        palette: the seven standard bars are used for decoration and for state,
@@ -47,22 +62,22 @@
 
 @media (prefers-color-scheme: light) {
     :root {
-        --bg: #f4f6f9;
-        --surface: #ffffff;
-        --surface-2: #f8fafc;
-        --border: #e3e8ef;
-        --border-strong: #cbd4e0;
-        --topbar-bg: rgba(244, 246, 249, 0.85);
+        --bg: #f6f5f3;
+        --surface: #fdfcfc;
+        --surface-2: #f9f8f6;
+        --border: #edebe8;
+        --border-strong: #d3cdc5;
+        --topbar-bg: rgba(246, 245, 243, 0.85);
         --input-bg: #ffffff;
         --button-bg: #ffffff;
-        --button-hover: #eef2f7;
-        --text: #131820;
-        --dim: #5c6875;
-        --faint: #8b95a3;
-        --accent-soft: rgba(76, 141, 255, 0.16);
+        --button-hover: #f2f0ee;
+        --text: #231f1a;
+        --dim: #696259;
+        --faint: #9c958b;
+        --accent-soft: rgba(242, 51, 44, 0.16);
         --warn-soft: rgba(240, 169, 59, 0.16);
-        --tile-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
-        --tile-shadow-hover: 0 14px 30px rgba(16, 24, 40, 0.12);
+        --tile-shadow: 0 1px 2px rgba(35, 31, 26, 0.06);
+        --tile-shadow-hover: 0 14px 30px rgba(35, 31, 26, 0.12);
     }
 }
 
@@ -176,7 +191,7 @@ body {
     inset: 0;
     background:
         radial-gradient(125% 85% at 50% -10%, rgba(0, 0, 0, 0) 35%, rgba(0, 0, 0, 0.62) 100%),
-        linear-gradient(180deg, rgba(6, 8, 11, 0.74), rgba(6, 8, 11, 0.32) 32%, rgba(6, 8, 11, 0.82));
+        linear-gradient(180deg, rgba(16, 15, 14, 0.74), rgba(16, 15, 14, 0.32) 32%, rgba(16, 15, 14, 0.82));
 }
 
 @keyframes drift-a {
@@ -212,17 +227,39 @@ body {
     position: sticky;
     top: 0;
     z-index: 5;
-    /* The colour bars run along the top edge, the way a test card sits on a
-       broadcast monitor: one static image, no animation, nothing to composite. */
+    /* The bars enter the chrome twice: a crisp rail along the top edge, the way
+       a test card sits on a broadcast monitor, and a soft wash behind the brand.
+       Both are static images, and the wash is masked rather than layered, so
+       neither of them costs the compositor anything. */
     background-color: var(--topbar-bg);
     background-image: var(--bars);
     background-repeat: no-repeat;
-    background-size: 100% 3px;
+    background-size: 100% var(--barrule);
     background-position: top left;
     border-bottom: 1px solid var(--border);
 }
 
+/* The wash: the bars at low opacity, fading out well before the controls, so the
+   top left of the page reads as lit by a bars pattern. It starts below the rail,
+   so the two bar treatments never sit on top of each other. */
+.topbar::after {
+    content: "";
+    position: absolute;
+    top: var(--barrule);
+    bottom: 0;
+    left: 0;
+    width: var(--wash-w);
+    z-index: 0;
+    background-image: var(--bars);
+    opacity: var(--wash-opacity);
+    -webkit-mask-image: linear-gradient(90deg, #000 0 52%, transparent);
+    mask-image: linear-gradient(90deg, #000 0 52%, transparent);
+    pointer-events: none;
+}
+
 .topbar-inner {
+    position: relative;
+    z-index: 1;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -244,8 +281,8 @@ body {
     flex: none;
     width: 38px;
     height: 38px;
-    border-radius: 10px;
-    background-color: #0b0d10;
+    border-radius: var(--ctl-radius);
+    background-color: #100f0e;
     background-image: var(--bars);
     background-repeat: no-repeat;
     background-size: 100% 70%;
@@ -290,7 +327,7 @@ body {
     padding-inline: 0.7rem;
     background: var(--input-bg);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--ctl-radius);
     color: var(--faint);
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -332,7 +369,7 @@ body {
     padding-inline: 0.7rem;
     background: var(--input-bg);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--ctl-radius);
     color: var(--faint);
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -373,7 +410,7 @@ body {
     height: 38px;
     padding-inline: 0.95rem;
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--ctl-radius);
     background: var(--button-bg);
     color: var(--text);
     font: inherit;
@@ -407,7 +444,7 @@ a.button {
     height: 30px;
     padding-inline: 0.7rem;
     border: 1px solid transparent;
-    border-radius: 999px;
+    border-radius: var(--pill-radius);
     font-size: 0.78rem;
     font-weight: 600;
 }
@@ -449,7 +486,7 @@ main.shell {
     background-color: var(--surface);
     background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 45%);
     border: 1px solid var(--border);
-    border-radius: 14px;
+    border-radius: var(--radius);
     overflow: hidden;
     color: inherit;
     text-decoration: none;
@@ -494,7 +531,7 @@ main.shell {
 .thumb {
     position: relative;
     aspect-ratio: 16 / 9;
-    background: #05070a;
+    background: #0e0d0c;
     overflow: hidden;
 }
 
@@ -523,25 +560,11 @@ main.shell {
 
 .thumb > .preview { opacity: 0; }
 
-/* A colour bar reference line along the foot of every preview, the way a
-   multiviewer labels each feed. It brightens to full strength once the tile has
-   a real frame, so it carries the "signal present" cue: the badge beside it only
-   says the stream is listed, which is a weaker claim than a frame on screen. */
-.thumb::after {
-    content: "";
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    height: 3px;
-    background-image: var(--bars);
-    background-size: 100% 100%;
-    opacity: 0.42;
-    transition: opacity 0.35s ease;
-}
-
-.tile[data-frame="loaded"] .thumb::after { opacity: 1; }
-
+/* The "signal present" cue is the fade from placeholder to a real preview frame.
+   The mix this theme was dialled from drops the per-tile bars rule to zero: on a
+   page of forty tiles that many bar strips stop being information and become
+   decoration, and the bars already say "broadcast" twice across the top of the
+   page. The badge still carries the label, and the frame is the evidence. */
 .tile[data-frame="loaded"] .thumb > .preview { opacity: 1; }
 
 /* The shimmer is a background-position animation, i.e. a repaint per tile for
@@ -561,8 +584,8 @@ main.shell {
     gap: 0.35rem;
     padding: 0.22rem 0.55rem;
     border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 999px;
-    background: rgba(8, 11, 15, 0.72);
+    border-radius: var(--pill-radius);
+    background: rgba(16, 15, 14, 0.78);
     color: var(--faint);
     font-size: 0.67rem;
     font-weight: 700;
@@ -580,7 +603,7 @@ main.shell {
 
 .tile[data-state="live"] .badge {
     color: var(--live);
-    border-color: rgba(61, 220, 113, 0.35);
+    border-color: rgba(37, 228, 85, 0.35);
 }
 
 .tile[data-state="live"] .badge::before {
@@ -617,7 +640,7 @@ main.shell {
     inset: 0;
     display: grid;
     place-items: center;
-    background: rgba(4, 6, 9, 0.3);
+    background: rgba(10, 9, 8, 0.32);
     opacity: 0;
     transition: opacity 0.18s ease;
 }
@@ -628,7 +651,7 @@ main.shell {
     height: 54px;
     border: 2px solid rgba(255, 255, 255, 0.85);
     border-radius: 50%;
-    background-color: rgba(10, 14, 20, 0.45);
+    background-color: rgba(20, 19, 17, 0.5);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 6.4v11.2l8.5-5.6z' fill='%23ffffff'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: center;
@@ -757,7 +780,7 @@ main.shell {
    so neither reaches for red: a copy that worked is quiet, and one that did not
    is amber, like every other thing this page is unhappy about. */
 .action[data-done="yes"] {
-    border-color: rgba(61, 220, 113, 0.4);
+    border-color: rgba(37, 228, 85, 0.4);
     color: var(--live);
 }
 
@@ -795,8 +818,8 @@ main.shell {
     width: 62px;
     height: 62px;
     margin: 0 auto 1rem;
-    border-radius: 14px;
-    background-color: #0b0d10;
+    border-radius: var(--radius);
+    background-color: #100f0e;
     background-image: var(--bars);
     background-repeat: no-repeat;
     background-size: 100% 68%;
@@ -923,14 +946,14 @@ main.shell {
     .vignette {
         background:
             radial-gradient(125% 85% at 50% -10%, rgba(255, 255, 255, 0) 35%, rgba(255, 255, 255, 0.55) 100%),
-            linear-gradient(180deg, rgba(244, 246, 249, 0.86), rgba(244, 246, 249, 0.45) 32%, rgba(244, 246, 249, 0.9));
+            linear-gradient(180deg, rgba(246, 245, 243, 0.86), rgba(246, 245, 243, 0.45) 32%, rgba(246, 245, 243, 0.9));
     }
 
-    .tile { background-image: linear-gradient(180deg, rgba(15, 23, 42, 0.025), rgba(15, 23, 42, 0) 45%); }
+    .tile { background-image: linear-gradient(180deg, rgba(35, 31, 26, 0.025), rgba(35, 31, 26, 0) 45%); }
 
-    .tile:hover { background-image: linear-gradient(180deg, rgba(15, 23, 42, 0.05), rgba(15, 23, 42, 0) 50%); }
+    .tile:hover { background-image: linear-gradient(180deg, rgba(35, 31, 26, 0.05), rgba(35, 31, 26, 0) 50%); }
 
-    .foot { background: rgba(15, 23, 42, 0.03); }
+    .foot { background: rgba(35, 31, 26, 0.03); }
 }
 
 /* Calm mode: the whole ambient layer is removed. grid.ts adds this class when
@@ -944,7 +967,7 @@ html.calm .wash {
 }
 
 html.calm .backdrop {
-    background-image: radial-gradient(120% 80% at 50% -10%, rgba(47, 79, 255, 0.14), rgba(47, 79, 255, 0) 60%);
+    background-image: radial-gradient(120% 80% at 50% -10%, rgba(242, 51, 44, 0.12), rgba(242, 51, 44, 0) 60%);
 }
 
 html.calm .vignette { opacity: 0.72; }

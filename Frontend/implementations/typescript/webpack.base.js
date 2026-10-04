@@ -46,7 +46,7 @@ const pwaPlugins = [
 							if (!name.endsWith('.html')) continue;
 							const html = asset.source().toString();
 							if (html.includes('rel="manifest"')) continue;
-							const head = '    <link rel="manifest" href="./manifest.webmanifest">\n    <meta name="theme-color" content="#0d0f12">\n</head>';
+							const head = '    <link rel="manifest" href="./manifest.webmanifest">\n    <meta name="theme-color" content="#191715">\n</head>';
 							compilation.updateAsset(
 								name,
 								new compiler.webpack.sources.RawSource(html.replace('</head>', head))

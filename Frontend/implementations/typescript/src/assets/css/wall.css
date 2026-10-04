@@ -3,12 +3,20 @@
    The palette is the same SMPTE 75% bar set the rest of the app is themed with. */
 
 :root {
-    --bg: #0d0f12;
-    --panel: #171a1f;
-    --border: #262b33;
-    --text: #e8eaed;
-    --muted: #8b939f;
-    --faint: #5c6470;
+    /* The same warm charcoal as the grid, so moving between the grid and the wall
+       is not a change of room. */
+    --bg: #191715;
+    --panel: #211f1c;
+    --border: #37332f;
+    --text: #eeedec;
+    --muted: #a59f97;
+    --faint: #80796f;
+
+    /* The two bar treatments, dialled from the same mix as the grid: a crisp rail
+       on the top edge and a softer wash behind the title. */
+    --barrule: 2px;
+    --wash-w: 42%;
+    --wash-opacity: 0.13;
 
     --bar-grey: #bfbfbf;
     --bar-yellow: #bfbf00;
@@ -70,8 +78,31 @@ body {
     top: 0;
     left: 0;
     right: 0;
-    height: 3px;
+    height: var(--barrule);
     background: var(--bars);
+}
+
+/* The bars again, at low opacity, fading out before they reach the controls. The
+   title sits inside the fade, so the top left of the wall is lit by the bars
+   without anything on the bar being tinted. */
+#wallbar::after {
+    content: '';
+    position: absolute;
+    top: var(--barrule);
+    bottom: 0;
+    left: 0;
+    width: var(--wash-w);
+    background-image: var(--bars);
+    opacity: var(--wash-opacity);
+    -webkit-mask-image: linear-gradient(90deg, #000 0 52%, transparent);
+    mask-image: linear-gradient(90deg, #000 0 52%, transparent);
+    pointer-events: none;
+}
+
+/* Lift the real controls above both bar layers. */
+#wallbar > * {
+    position: relative;
+    z-index: 1;
 }
 
 #wallbar h1 {
@@ -92,7 +123,7 @@ body {
     color: var(--text);
     font-size: 0.8rem;
     text-decoration: none;
-    background: #12151a;
+    background: #1b1a18;
 }
 
 #backToGrid:hover { border-color: var(--bar-cyan); }
@@ -140,7 +171,7 @@ body {
     padding: 0.35rem 0.65rem;
     border: 0;
     border-left: 1px solid var(--border);
-    background: #12151a;
+    background: #1b1a18;
     color: var(--muted);
     font: inherit;
     font-size: 0.78rem;
@@ -151,7 +182,7 @@ body {
 .layout button:hover { color: var(--text); }
 
 .layout button.is-active {
-    background: #1f242c;
+    background: #2e2c28;
     color: var(--text);
     box-shadow: inset 0 -2px 0 var(--bar-yellow);
 }
@@ -163,7 +194,7 @@ body {
     padding: 0.35rem 0.7rem;
     border: 1px solid var(--border);
     border-radius: 6px;
-    background: #12151a;
+    background: #1b1a18;
     color: var(--text);
     font: inherit;
     font-size: 0.78rem;
@@ -211,7 +242,7 @@ body {
     min-height: 0;
     overflow: hidden;
     background: #000;
-    border: 1px solid #1b1f25;
+    border: 1px solid #262421;
 }
 
 /* The player letterboxes the picture inside the tile, so the cells can be any
@@ -232,7 +263,7 @@ body {
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    background: radial-gradient(120% 90% at 50% 45%, #14181e 0%, #08090b 75%);
+    background: radial-gradient(120% 90% at 50% 45%, #23211f 0%, #0c0b0a 75%);
     color: var(--muted);
     font-size: 0.8rem;
     transition: opacity 0.4s ease, visibility 0.4s ease;
@@ -267,7 +298,7 @@ body {
     gap: 0.5rem;
     padding: 0.5rem 0.6rem;
     /* A scrim rather than a bar, so the picture underneath stays visible. */
-    background: linear-gradient(to top, rgba(6, 8, 10, 0.88) 0%, rgba(6, 8, 10, 0.55) 55%, rgba(6, 8, 10, 0) 100%);
+    background: linear-gradient(to top, rgba(16, 15, 14, 0.88) 0%, rgba(16, 15, 14, 0.55) 55%, rgba(16, 15, 14, 0) 100%);
     font-size: 0.78rem;
     transition: opacity 0.3s ease;
 }
@@ -327,7 +358,7 @@ body {
     padding: 0.2rem 0.45rem;
     border: 1px solid var(--border);
     border-radius: 5px;
-    background: rgba(8, 10, 13, 0.78);
+    background: rgba(16, 15, 14, 0.78);
     color: var(--muted);
     font: inherit;
     font-size: 0.72rem;

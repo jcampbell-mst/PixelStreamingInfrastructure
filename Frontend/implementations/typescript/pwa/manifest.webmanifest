@@ -5,8 +5,8 @@
     "start_url": "./grid.html",
     "scope": "./",
     "display": "standalone",
-    "background_color": "#0d0f12",
-    "theme_color": "#0d0f12",
+    "background_color": "#191715",
+    "theme_color": "#211f1c",
     "orientation": "any",
     "categories": ["video", "productivity"],
     "icons": [
