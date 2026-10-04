@@ -130,9 +130,16 @@ const config = {
   //   GET /snapshots/<sfuId>.jpg   - latest JPEG, 404 until the first frame
   //   GET /snapshots               - JSON index of streams and their state
   //
-  // Decoding is the expensive part, so `maxConcurrent` caps how many ffmpeg
-  // processes run at once. Streams over the cap wait in a queue and serve 404
-  // until a slot frees; the grid renders its placeholder for those.
+  // Decoding is the expensive part, so two things are done about it. ffmpeg is
+  // run with `-skip_frame nokey` and the streamer is asked for a key frame once
+  // per `refreshSeconds`, which drops everything between intra frames before it
+  // is ever decoded; and `maxConcurrent` caps how many ffmpeg processes run at
+  // once. Streams over the cap wait in a queue and serve 404 until a slot
+  // frees; the grid renders its placeholder for those.
+  //
+  // Decoding while nobody is watching is simply wasted CPU, so the HTTP API's
+  // traffic stands in for the viewer count: `idleTimeoutSeconds` without a
+  // request stops every worker, and the next request starts them again.
   //
   //   outputDir     - where the SDP and JPEG files are written
   //   httpHost/port - where the snapshot HTTP API listens. Bind to 0.0.0.0 to
@@ -143,16 +150,24 @@ const config = {
   //   width         - thumbnail width in pixels, height follows the source
   //                   aspect ratio. Keep this small; it is a thumbnail.
   //   quality       - JPEG quality passed to ffmpeg as -q:v (2 best, 31 worst)
-  //   refreshSeconds- how often a worker decodes a fresh frame. Every frame it
-  //                   decodes is overwritten onto the same JPEG, so this is
-  //                   also how often the thumbnail updates. The staleness
-  //                   watchdog is derived from this value.
+  //   refreshSeconds- how often a worker produces a fresh frame, and so how
+  //                   often the thumbnail updates. The staleness watchdog is
+  //                   derived from this value.
   //
-  //                   Raising it lowers the CPU cost of a preview roughly in
-  //                   proportion, at the price of a staler thumbnail. Note that
-  //                   ffmpeg still has to decode every frame it receives and
-  //                   throw most of them away, so the saving is modest beyond
-  //                   ~30s; the real lever for cost is `maxConcurrent`.
+  //                   With keyFramesOnly this is also how often a key frame is
+  //                   requested from the streamer, and the whole cost of a
+  //                   preview becomes roughly one decoded frame per interval,
+  //                   which at 60s is well under a percent of a core. Asking
+  //                   more often than a viewer would notice only makes the
+  //                   streamer encode extra intra frames for every player.
+  //   keyFramesOnly - decode intra frames only (the default). This is what makes
+  //                   a preview cheap. Set it false to debug a preview that
+  //                   never appears: everything is decoded again at the old
+  //                   cost, and a stream with a long GOP can then take a whole
+  //                   GOP to produce a thumbnail.
+  //   idleTimeoutSeconds - seconds without a snapshot request before every
+  //                   decoder is stopped. 0 keeps them running whether anybody
+  //                   is looking or not.
   //   ffmpegLogLevel- ffmpeg's -loglevel. 'error' keeps the SFU's own log
   //                   readable; raise it to 'info' or 'verbose' to see why a
   //                   particular stream's preview is not appearing.
@@ -168,6 +183,8 @@ const config = {
     width: 320,
     quality: 5,
     refreshSeconds: 60,
+    keyFramesOnly: true,
+    idleTimeoutSeconds: 60,
     ffmpegLogLevel: "error",
     portRangeStart: 51000,
     ffmpegPath: null,

@@ -13,6 +13,15 @@
 // Decoding is the expensive part, so the number of concurrently running ffmpeg
 // processes is capped. Streams beyond the cap wait in a queue ("pending") and
 // are served a 404 until a slot frees, which the grid renders as a placeholder.
+// Most of what arrives never needs decoding either: ffmpeg is run with
+// `-skip_frame nokey` and the streamer is asked for a key frame once per
+// interval, so a preview costs one intra frame per `refreshSeconds` rather than
+// a continuous decode of every frame.
+//
+// Decoding is also pointless while nothing is looking at a preview. The HTTP
+// API's traffic is the only evidence there is: a request-free stretch of
+// `idleTimeoutSeconds` stops every worker, and the next request starts them
+// again.
 //
 // A simulcast producer forwards a spatial layer only once one has been
 // selected. mediasoup leaves that choice to the transport's bitrate allocator
@@ -21,7 +30,9 @@
 // consumer is negotiated with capabilities that keep the bitrate under
 // mediasoup's own control (see UNMANAGED_HEADER_EXTENSIONS), names the lowest
 // layer explicitly, and asks the streamer for a key frame, which is the other
-// thing a decoder needs before it can emit anything. Both are re-issued while
+// thing a decoder needs before it can emit anything. A key frame is asked for
+// once per interval rather than only when the frame has gone stale, because
+// nothing at all is decoded in between; the layer selection is re-issued while
 // a worker is producing nothing, and a worker that still produces nothing is
 // recycled.
 
@@ -38,6 +49,10 @@ const path = require('path');
 // short enough that a worker which quietly stopped decoding is nudged rather
 // than left sitting on a stale frame.
 const HEALTH_CHECK_MS = 5000;
+
+// How often the idle pause is re-evaluated. It only has to be short relative to
+// the configured idle timeout, which is measured in tens of seconds.
+const IDLE_CHECK_MS = 5000;
 
 // A worker that has never written a frame is allowed a much longer run-up than
 // one that has: ffmpeg writes nothing at all until it has probed enough of the
@@ -168,12 +183,21 @@ class SnapshotManager {
         this.options = {
             ...options,
             refreshSeconds: Number(options.refreshSeconds) > 0 ? Number(options.refreshSeconds) : 60,
-            ffmpegLogLevel: options.ffmpegLogLevel || DEFAULT_FFMPEG_LOG_LEVEL
+            ffmpegLogLevel: options.ffmpegLogLevel || DEFAULT_FFMPEG_LOG_LEVEL,
+            // Decoding only intra frames is what makes a preview cheap, at the
+            // price of needing a key frame request to advance it (see nudge()).
+            keyFramesOnly: options.keyFramesOnly !== false,
+            // Seconds without a snapshot request before every decoder is
+            // stopped. 0 keeps them running whether anyone is looking or not.
+            idleTimeoutSeconds: Number(options.idleTimeoutSeconds) > 0
+                ? Number(options.idleTimeoutSeconds)
+                : 0
         };
         this.outputDir = options.outputDir;
         this.ffmpegPath = resolveFfmpegPath(options.ffmpegPath);
         this.rtpCapabilities = snapshotRtpCapabilities(router.rtpCapabilities);
         this.staleMs = this.options.refreshSeconds * 1000 + HEALTH_CHECK_MS * 2;
+        this.idleTimeoutMs = this.options.idleTimeoutSeconds * 1000;
 
         // sfuId -> record. A record exists as soon as a stream is registered,
         // but `child` is only set once it has been given a decode slot.
@@ -183,6 +207,14 @@ class SnapshotManager {
         this.httpServer = null;
         this.stopped = false;
         this.streamInfoProvider = null;
+
+        // Idle pause state. `paused` means every worker has been shut down and
+        // none is started until a request arrives. Counting from construction
+        // rather than from zero means a stream that goes live before anyone
+        // looks still gets its first minute of previews.
+        this.paused = false;
+        this.lastRequestMs = Date.now();
+        this.idleTimer = null;
 
         fs.mkdirSync(this.outputDir, { recursive: true });
     }
@@ -240,6 +272,7 @@ class SnapshotManager {
             failures: 0,
             statsLogged: false,
             lastStderr: null,
+            lastNudgeMs: 0,
             // Last whole JPEG read back off disk, served in place of a partial
             // write. Cleared implicitly when the worker is recycled.
             cachedImage: null,
@@ -259,7 +292,9 @@ class SnapshotManager {
     }
 
     async startRecord(record) {
-        if (this.stopped || record.shuttingDown) {
+        // While paused a record is left sitting without a worker; anything that
+        // would have started one is picked up by the next request instead.
+        if (this.stopped || this.paused || record.shuttingDown) {
             return;
         }
 
@@ -285,6 +320,47 @@ class SnapshotManager {
             }
         }
         return count;
+    }
+
+    // The ffmpeg command line for one worker, kept apart from the spawning so it
+    // can be read (and checked) on its own.
+    ffmpegArgs(record) {
+        const args = [
+            '-hide_banner', '-nostdin', '-loglevel', this.options.ffmpegLogLevel,
+            '-protocol_whitelist', 'file,udp,rtp',
+            '-fflags', '+genpts',
+            '-analyzeduration', '5M', '-probesize', '5M'
+        ];
+
+        // Skipping everything but intra frames is what makes a preview cheap:
+        // the rest are demuxed and dropped without ever reaching the decoder.
+        // It has to be an input option, so it comes before -i.
+        if (this.options.keyFramesOnly) {
+            args.push('-skip_frame', 'nokey');
+        }
+
+        args.push(
+            '-i', record.sdpPath,
+            '-an',
+            // The interval is applied with select rather than with the fps
+            // filter. `fps=1/60` lays its output timestamps out on a grid
+            // starting at the first input timestamp, so its very first frame is
+            // not due until the stream has run for a whole interval -- a minute
+            // of nothing before the preview appears at all. `select` takes the
+            // first frame as soon as one is decodable and then one per interval,
+            // which puts a preview on screen within seconds of a stream going
+            // live. With intra frames only it doubles as the cap on how often a
+            // stream with a short GOP rewrites the JPEG.
+            '-vf', `select='isnan(prev_selected_t)+gte(t-prev_selected_t,${this.options.refreshSeconds})',`
+                + `scale=${this.options.width}:-2`,
+            '-fps_mode', 'vfr',
+            '-q:v', String(this.options.quality),
+            '-threads', '1',
+            '-f', 'image2', '-update', '1', '-y',
+            record.imagePath
+        );
+
+        return args;
     }
 
     async spawnWorker(record) {
@@ -329,33 +405,9 @@ class SnapshotManager {
         // does, so the probe window only needs to be long enough to see the
         // stream.
         //
-        // The refresh interval is applied with select rather than with the fps
-        // filter. `fps=1/60` lays its output timestamps out on a grid starting
-        // at the first input timestamp, so its very first frame is not due
-        // until the stream has run for a whole interval -- a minute of nothing
-        // before the preview appears at all. `select` takes the first frame as
-        // soon as one is decodable and then one per interval, which puts a
-        // preview on screen within seconds of a stream going live.
-        //
-        // Skipping everything but key frames with -skip_frame nokey would be
-        // cheaper still, but a stream with a long GOP would then refresh its
-        // preview once a minute, or never. The consumer only forwards the
-        // producer's lowest temporal layer, so a full decode stays affordable.
-        const child = spawn(this.ffmpegPath, [
-            '-hide_banner', '-nostdin', '-loglevel', this.options.ffmpegLogLevel,
-            '-protocol_whitelist', 'file,udp,rtp',
-            '-fflags', '+genpts',
-            '-analyzeduration', '5M', '-probesize', '5M',
-            '-i', record.sdpPath,
-            '-an',
-            '-vf', `select='isnan(prev_selected_t)+gte(t-prev_selected_t,${this.options.refreshSeconds})',`
-                + `scale=${this.options.width}:-2`,
-            '-fps_mode', 'vfr',
-            '-q:v', String(this.options.quality),
-            '-threads', '1',
-            '-f', 'image2', '-update', '1', '-y',
-            record.imagePath
-        ], { stdio: ['ignore', 'ignore', 'pipe'] });
+        // The argument list itself lives in ffmpegArgs(); see there for why the
+        // refresh interval is a select filter and not -skip_frame alone.
+        const child = spawn(this.ffmpegPath, this.ffmpegArgs(record), { stdio: ['ignore', 'ignore', 'pipe'] });
 
         record.child = child;
         record.port = port;
@@ -391,7 +443,7 @@ class SnapshotManager {
             record.port = null;
             this.releasePort(port);
             this.pumpQueue();
-            if (this.stopped || record.shuttingDown) {
+            if (this.stopped || this.paused || record.shuttingDown) {
                 return;
             }
             console.log('[%s] Snapshot worker %s (code=%s signal=%s), restarting', record.sfuId, reason, code, signal);
@@ -434,10 +486,14 @@ class SnapshotManager {
         console.log('[%s] Snapshot worker running (udp %s -> %s)', record.sfuId, port, record.imagePath);
     }
 
-    // Asks the streamer for a key frame. A worker decoding only key frames
-    // cannot emit anything until one arrives, which can be a whole GOP away,
-    // and the request is simply lost if the streamer is not encoding yet.
+    // Asks the streamer for a key frame. With intra frames only, nothing at all
+    // is decoded until one arrives, which can be a whole GOP away, and the
+    // request is simply lost if the streamer is not encoding yet. The moment is
+    // stamped here rather than by the caller, because a request is not free:
+    // each one makes the streamer encode an intra frame for every viewer, and
+    // nobody needs previews refreshed more often than refreshSeconds.
     async nudge(record) {
+        record.lastNudgeMs = Date.now();
         try {
             await record.consumer.requestKeyFrame();
         } catch (err) {
@@ -445,11 +501,27 @@ class SnapshotManager {
         }
     }
 
+    // Whether a worker has waited long enough to be worth another key frame
+    // request. Decoding only intra frames means the answer does not depend on
+    // how fresh the frame on disk is: one is due every interval regardless, or
+    // the preview would never advance. A full decode only needs one once the
+    // frame has gone stale, and asking more often than that just makes the
+    // streamer work for nothing.
+    nudgeDue(record, ageMs) {
+        if (Date.now() - record.lastNudgeMs < this.options.refreshSeconds * 1000) {
+            return false;
+        }
+        if (this.options.keyFramesOnly) {
+            return true;
+        }
+        return ageMs === null || ageMs >= this.staleMs;
+    }
+
     // Keeps the preview honest once a worker is up: a stream that goes quiet
     // leaves a stale frame behind, and a worker that never decoded anything at
     // all is better recycled than left running.
     async checkHealth(record, child) {
-        if (this.stopped || record.shuttingDown || record.child !== child) {
+        if (this.paused || this.stopped || record.shuttingDown || record.child !== child) {
             return;
         }
 
@@ -484,7 +556,9 @@ class SnapshotManager {
             }
             child.kill();
             return;
-        } else {
+        }
+
+        if (this.nudgeDue(record, ageMs)) {
             await this.nudge(record);
         }
 
@@ -531,7 +605,7 @@ class SnapshotManager {
     }
 
     scheduleRestart(record) {
-        if (this.stopped || record.shuttingDown || record.restartTimer) {
+        if (this.paused || this.stopped || record.shuttingDown || record.restartTimer) {
             return;
         }
 
@@ -596,7 +670,7 @@ class SnapshotManager {
     }
 
     pumpQueue() {
-        while (!this.stopped && this.pending.length > 0 && this.activeCount() < this.options.maxConcurrent) {
+        while (!this.paused && !this.stopped && this.pending.length > 0 && this.activeCount() < this.options.maxConcurrent) {
             const sfuId = this.pending.shift();
             const record = this.records.get(sfuId);
             if (!record || record.child) {
@@ -720,6 +794,12 @@ class SnapshotManager {
             return;
         }
 
+        // Any request is a viewer, and a viewer is the only reason any of this
+        // runs. Doing it here rather than in the listeners keeps the pause
+        // invisible from the outside: the reply that follows is served from the
+        // workers that this call has just started again.
+        this.noteActivity();
+
         // Machine readable index of which streams currently have a snapshot, how
         // old that snapshot is, and how often snapshots are written. The grid uses
         // the ages to reload a tile exactly when a new frame has landed instead of
@@ -776,10 +856,91 @@ class SnapshotManager {
         this.httpServer.listen(this.options.httpPort, this.options.httpHost, () => {
             console.log('Snapshot API listening on %s:%s (ffmpeg: %s)', this.options.httpHost, this.options.httpPort, this.ffmpegPath);
         });
+
+        this.startIdleWatch();
+    }
+
+    // --- Idle pause ----------------------------------------------------------
+
+    // Records that somebody is looking at previews, and undoes the pause if one
+    // is in force. Cheap enough to call on every request.
+    noteActivity() {
+        const idleMs = Date.now() - this.lastRequestMs;
+        this.lastRequestMs = Date.now();
+        if (this.paused) {
+            this.resumeDecoders(idleMs);
+        }
+    }
+
+    startIdleWatch() {
+        if (this.idleTimeoutMs <= 0 || this.idleTimer) {
+            return;
+        }
+        this.idleTimer = setInterval(() => this.checkIdle(), IDLE_CHECK_MS);
+        // Watching for idleness is not a reason to keep the process alive.
+        if (this.idleTimer.unref) {
+            this.idleTimer.unref();
+        }
+    }
+
+    checkIdle() {
+        if (this.paused || this.stopped || this.idleTimeoutMs <= 0) {
+            return;
+        }
+        if (Date.now() - this.lastRequestMs < this.idleTimeoutMs) {
+            return;
+        }
+
+        const stopped = this.activeCount();
+        this.paused = true;
+        // Nothing may be queued across the pause: resumeDecoders() walks every
+        // record and starts it, so a leftover entry would start it twice.
+        this.pending = [];
+        console.log('No snapshot request for %s s, stopping %s decoder(s) until the next one',
+            this.options.idleTimeoutSeconds, stopped);
+
+        for (const record of Array.from(this.records.values())) {
+            void this.releaseRecord(record).then(() => {
+                // A request can arrive while a worker is being shut down, and
+                // resumeDecoders() skips any record that still has a child. Now
+                // that the child is really gone, the record starts here instead
+                // of being left without a worker until the next pause.
+                if (this.paused || record.child) {
+                    return;
+                }
+                this.startRecord(record).catch(err => {
+                    console.error('[%s] Snapshot restart after idle failed: %s', record.sfuId, err);
+                });
+            });
+        }
+    }
+
+    // Called for a request that arrives while every worker is stopped. Records
+    // that are somehow still busy are left alone here and restarted by
+    // checkIdle() once their worker has actually gone.
+    resumeDecoders(idleMs) {
+        this.paused = false;
+        this.pending = [];
+        let started = 0;
+        for (const record of Array.from(this.records.values())) {
+            if (record.child || record.shuttingDown) {
+                continue;
+            }
+            started++;
+            this.startRecord(record).catch(err => {
+                console.error('[%s] Snapshot restart after idle failed: %s', record.sfuId, err);
+            });
+        }
+        console.log('Snapshot request after %s s idle, starting %s decoder(s)',
+            Math.round(idleMs / 1000), started);
     }
 
     stop() {
         this.stopped = true;
+        if (this.idleTimer) {
+            clearInterval(this.idleTimer);
+            this.idleTimer = null;
+        }
         for (const record of Array.from(this.records.values())) {
             record.shuttingDown = true;
             if (record.restartTimer) {
