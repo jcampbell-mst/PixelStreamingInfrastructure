@@ -174,9 +174,6 @@ interface Tile {
     link: HTMLAnchorElement;
     img: HTMLImageElement;
     badge: HTMLSpanElement;
-    info: HTMLSpanElement;
-    infoIcon: HTMLSpanElement;
-    infoText: HTMLSpanElement;
     liveChip: HTMLSpanElement;
     liveText: HTMLSpanElement;
     viewersChip: HTMLSpanElement;
@@ -368,9 +365,6 @@ function setStatus(text: string): void {
     statusEl.hidden = text.length === 0;
 }
 
-/** How a tile's preview is doing, for the info line under its name. */
-type InfoLevel = 'ok' | 'pending' | 'warn';
-
 // Icons are inlined rather than fetched. Each one is drawn on every tile, so a
 // symbol in the markup costs no request, and inheriting `currentColor` is what
 // keeps an icon in step with the text beside it. Every string here is a constant,
@@ -380,26 +374,16 @@ const ICONS = {
     viewers: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2.4 12S6.1 5.9 12 5.9 21.6 12 21.6 12 17.9 18.1 12 18.1 2.4 12 2.4 12Z"/><circle cx="12" cy="12" r="2.6"/></svg>',
     link: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.2 13.8a3.7 3.7 0 0 0 5.3 0l2.9-2.9a3.7 3.7 0 0 0-5.2-5.2l-1.5 1.4"/><path d="M13.8 10.2a3.7 3.7 0 0 0-5.3 0l-2.9 2.9a3.7 3.7 0 0 0 5.2 5.2l1.5-1.4"/></svg>',
     id: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9.7 4 8.2 20"/><path d="M15.8 4l-1.5 16"/><path d="M4.7 9.4h15"/><path d="M4.1 14.6h15"/></svg>',
-    pin: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8.4 3.4h7.2v4.2H8.4z"/><path d="M12 7.6v5"/><path d="M6.8 12.6h10.4"/><path d="M12 12.6V21"/></svg>',
-    pending: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle class="dot" cx="6.4" cy="12" r="1.8"/><circle class="dot" cx="12" cy="12" r="1.8"/><circle class="dot" cx="17.6" cy="12" r="1.8"/></svg>',
-    warn: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4.4 21 19.6H3z"/><path d="M12 10v4.2"/><path d="M12 16.8h.01"/></svg>'
-};
-
-// The info line carries an icon as well as wording, and the icon follows the same
-// level the colour does: a reading of the clock, a wait, or something wrong.
-const INFO_ICON: Record<InfoLevel, string> = {
-    ok: ICONS.clock,
-    pending: ICONS.pending,
-    warn: ICONS.warn
+    pin: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8.4 3.4h7.2v4.2H8.4z"/><path d="M12 7.6v5"/><path d="M6.8 12.6h10.4"/><path d="M12 12.6V21"/></svg>'
 };
 
 // The badge is the tile's tally, and the only thing this page knows about a
 // stream is that the signalling server still lists it. Preview health
 // deliberately does not reach the badge: a snapshot that failed to capture says
 // nothing about whether the stream is up, so a stream that is listed reads as
-// live however its preview is doing, and anything the preview cannot do is
-// reported on the info line instead. `unknown` is for when the streamer list
-// itself has gone away.
+// live however its preview is doing, and a preview that never arrives is shown by
+// the placeholder in the frame and nothing else. `unknown` is for when the
+// streamer list itself has gone away.
 // The link is the tile's only accessible name, and a name given to a link replaces
 // everything inside it, so what the badge and the chips say has to be said here as
 // well or it never reaches a screen reader.
@@ -413,46 +397,6 @@ function setState(tile: Tile, state: 'live' | 'unknown'): void {
     tile.el.dataset['state'] = state;
     tile.badge.textContent = state === 'live' ? 'Live' : 'Unknown';
     tile.link.setAttribute('aria-label', linkLabel(tile.id, state));
-}
-
-// `warn` is the only info level that speaks up, and it is always paired with
-// wording that says what is wrong, so it never relies on colour alone. The icon
-// is redrawn only when the level changes: the wording is rewritten on every pass,
-// and re-parsing an unchanged symbol each time would be work for nothing.
-function setInfo(tile: Tile, text: string, level: InfoLevel = 'ok'): void {
-    if (tile.el.dataset['info'] !== level) {
-        tile.infoIcon.innerHTML = INFO_ICON[level];
-    }
-    tile.infoText.textContent = text;
-    tile.el.dataset['info'] = level;
-}
-
-function formatAge(ageMs: number): string {
-    const seconds = Math.max(0, Math.round(ageMs / 1000));
-    if (seconds < 10) {
-        return 'Updated just now';
-    }
-    if (seconds < 90) {
-        return `Updated ${seconds}s ago`;
-    }
-    return `Updated ${Math.round(seconds / 60)}m ago`;
-}
-
-// The info line is written by the index pass, but the frame it describes only
-// lands when the image has loaded, which can be a whole poll later. Settling it
-// here keeps a fresh preview from still reading as one that is being waited for.
-// Without an index there is nothing else that moves the line on at all, so the
-// preview has to be able to speak for itself.
-function settleInfo(tile: Tile): void {
-    if (!indexAvailable) {
-        setInfo(tile, 'Updated');
-        return;
-    }
-    if (tile.frameAgeMs === null) {
-        setInfo(tile, 'Updated just now');
-        return;
-    }
-    setInfo(tile, formatAge(tile.frameAgeMs + Math.max(0, Date.now() - tile.requestedAt)));
 }
 
 function formatDuration(ms: number): string {
@@ -1016,7 +960,6 @@ function addTile(id: string): void {
     // starts out as live; only its preview has anything to wait for.
     el.dataset['state'] = 'live';
     el.dataset['frame'] = 'awaiting';
-    el.dataset['info'] = 'pending';
 
     const link = document.createElement('a');
     link.className = 'tile-link';
@@ -1054,16 +997,7 @@ function addTile(id: string): void {
     const name = document.createElement('span');
     name.className = 'name';
     name.textContent = id;
-    const info = document.createElement('span');
-    info.className = 'info';
-    const infoIcon = document.createElement('span');
-    infoIcon.className = 'info-icon';
-    infoIcon.innerHTML = INFO_ICON['pending'];
-    const infoText = document.createElement('span');
-    infoText.className = 'info-text';
-    infoText.textContent = 'Waiting for a preview';
-    info.append(infoIcon, infoText);
-    meta.append(name, info);
+    meta.append(name);
 
     const time = tileChip('chip chip-time', ICONS.clock, 'How long this feed has been sending');
     const viewers = tileChip('chip chip-viewers', ICONS.viewers, 'Viewers watching this feed now');
@@ -1092,9 +1026,6 @@ function addTile(id: string): void {
         link,
         img,
         badge,
-        info,
-        infoIcon,
-        infoText,
         liveChip: time.chip,
         liveText: time.text,
         viewersChip: viewers.chip,
@@ -1130,7 +1061,6 @@ function addTile(id: string): void {
     img.addEventListener('load', () => {
         tile.hasFrame = true;
         el.dataset['frame'] = 'loaded';
-        settleInfo(tile);
         if (!fxActive) {
             return;
         }
@@ -1170,18 +1100,8 @@ function applyIndex(index: SnapshotIndex): void {
         tile.indexHasImage = entry && typeof entry.hasImage === 'boolean' ? entry.hasImage : null;
 
         if (!entry || !entry.hasImage) {
-            if (!tile.hasFrame) {
-                // What the index says about a missing preview: the worker never
-                // started, it is queued, or it gave up. None of those are
-                // statements about the stream.
-                if (entry && entry.state === 'error') {
-                    setInfo(tile, 'Preview unavailable', 'warn');
-                } else if (entry && entry.state === 'pending') {
-                    setInfo(tile, 'Waiting for a decode slot', 'pending');
-                } else {
-                    setInfo(tile, 'Waiting for video', 'pending');
-                }
-            }
+            // The index says there is no frame to go and get, so the tile keeps
+            // whatever it already has and waits for the next pass.
             continue;
         }
 
@@ -1201,15 +1121,6 @@ function applyIndex(index: SnapshotIndex): void {
 
         if (wantsLoad && loadAllowed(tile) && now >= tile.retryAt) {
             loadPreview(tile, ageMs);
-        }
-
-        if (tile.hasFrame) {
-            const stale = ageMs !== null && ageMs > refreshMs * 2;
-            if (stale) {
-                setInfo(tile, 'Preview is out of date', 'warn');
-            } else {
-                setInfo(tile, ageMs === null ? 'Updated' : formatAge(ageMs));
-            }
         }
     }
 

@@ -532,8 +532,7 @@ main.shell {
 
 /* One icon system. Every symbol is a stroked outline on a 24x24 grid that
    inherits the colour and the size of the text it sits in, so no icon needs to be
-   styled where it is used. The filled dot is the one exception the pending mark
-   needs. */
+   styled where it is used. */
 .icon {
     width: 1em;
     height: 1em;
@@ -543,11 +542,6 @@ main.shell {
     stroke-width: 1.9;
     stroke-linecap: round;
     stroke-linejoin: round;
-}
-
-.icon > .dot {
-    fill: currentColor;
-    stroke: none;
 }
 
 .thumb {
@@ -723,10 +717,16 @@ main.shell {
     text-overflow: ellipsis;
 }
 
+/* The meta strip names the feed and nothing else. Preview health used to be
+   reported here, and it has been dropped rather than moved: what an operator does
+   with a tile is watch it, open it, or point someone at it, and none of those
+   turns on knowing when the still was captured. A tile whose preview never
+   arrives shows the placeholder in its frame, which says as much as a sentence
+   would. */
+
 .meta {
     display: flex;
     flex-direction: column;
-    gap: 0.1rem;
     min-width: 0;
     padding: 0.7rem 0.85rem 0.8rem;
 }
@@ -738,39 +738,6 @@ main.shell {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.meta .info {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    min-width: 0;
-    color: var(--dim);
-    font-size: 0.76rem;
-}
-
-.meta .info-text {
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-}
-
-/* The icon is decorative next to wording that already says what is happening, so
-   it takes the colour of the line it sits in rather than a colour of its own. */
-.meta .info-icon {
-    display: inline-flex;
-    flex: 0 0 auto;
-}
-
-/* Preview health, reported here rather than on the badge: a snapshot that failed
-   to capture is no evidence that the stream is down, and a stream that is listed
-   keeps its tally while its preview troubles are spelled out underneath it.
-   Amber is the only level that speaks up, and it is always paired with wording
-   that says what is wrong, so it never relies on colour alone. */
-.tile[data-info="warn"] .meta .info {
-    color: var(--warn);
-    font-weight: 600;
 }
 
 /* Tile footer: the controls, and nothing but the controls. What the feed was doing

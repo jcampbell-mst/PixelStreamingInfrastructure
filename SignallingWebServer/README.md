@@ -114,20 +114,11 @@ Set `snapshot_proxy_host`/`snapshot_proxy_port` to wherever the SFU snapshot API
 
 ## Stream grid status
 
-A tile says two different things, and keeps them apart on purpose:
+A tile reports the stream and nothing about the snapshot pipeline:
 
 * The **badge** is a tally of the stream, and nothing else. It reads `Live` whenever the signalling server names the stream in its streamer list, which is polled every five seconds. It reads `Unknown` only while that list cannot be refreshed, i.e. from the moment the web socket closes until it is reconnected, because then no tile can honestly claim to be live. A preview failing says nothing about the stream, so a failed snapshot never moves this badge.
-* The **small line under the tile** is preview health. When something is wrong there it is shown in amber, always with wording that names the problem, so colour is never the only cue. The thumbnail's colour bar doubles as a "signal present" cue: it is drawn at full strength once a frame has loaded and dimmed while one is still awaited.
-
-| Line | Means |
-| --- | --- |
-| `Updated just now`, `Updated 3m ago` | The preview on the tile is current; the age comes from the snapshot index |
-| `Preview is out of date` | The newest frame is older than twice the refresh interval (amber) |
-| `Preview unavailable` | The snapshot worker has been retried repeatedly and never wrote a frame (amber) |
-| `Waiting for a decode slot` | The worker for this stream is queued behind `snapshots.maxConcurrent` others |
-| `Waiting for video` | There is no preview and no snapshot record yet — nothing has been published, or the codec is not one the snapshot worker supports |
-
-That last distinction is the useful one when a preview is missing: `Preview unavailable` points at the snapshot pipeline (check `ffmpeg` is present and what the SFU logs for that stream), whereas `Waiting for video` means the SFU never got a video producer to decode from in the first place.
+* The **frame** carries the two figures worth reading at a glance: how long the stream has been up, in the top right corner, and how many viewers are on it, in the bottom right. The thumbnail's colour bar doubles as a "signal present" cue: it is drawn at full strength once a frame has loaded and dimmed while one is still awaited.
+* **Preview health is not reported.** A snapshot is a convenience, and when one is missing, queued behind the snapshot workers, or older than the refresh interval, the frame itself says so — it shows the last frame it had, or the placeholder. The tile needs no "last updated" line for that: an operator watching a wall of tiles reads the picture, not the timestamp, and a tile with nothing to show is obvious as soon as it is looked at.
 
 ## Stream grid backdrop
 
