@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 import express from 'express';
 import fs from 'fs';
+import http from 'http';
 import path from 'path';
 import {
     SignallingServer,
@@ -102,6 +103,11 @@ program
         'Sets the maximum number of subscribers per streamer. 0 = unlimited',
         config_file.max_players || '0'
     )
+    .option(
+        '--hide_non_sfu_streamers',
+        'Hides non-SFU streamers from players. Players can only see and subscribe to SFUs.',
+        config_file.hide_non_sfu_streamers || false
+    )
     .option('--serve', 'Enables the webserver on player_port.', config_file.serve || false)
     .option(
         '--http_root <path>',
@@ -112,6 +118,21 @@ program
         '--homepage <filename>',
         'The default html file to serve on the web server.',
         config_file.homepage || 'player.html'
+    )
+    .option(
+        '--snapshot_proxy',
+        'Proxies /snapshots requests to the SFU snapshot API, so the stream grid can load previews from the same origin.',
+        config_file.snapshot_proxy || false
+    )
+    .option(
+        '--snapshot_proxy_host <host>',
+        'Host of the SFU snapshot API to proxy to.',
+        config_file.snapshot_proxy_host || '127.0.0.1'
+    )
+    .option(
+        '--snapshot_proxy_port <port>',
+        'Port of the SFU snapshot API to proxy to.',
+        config_file.snapshot_proxy_port || '8891'
     )
     .option('--https', 'Enables the webserver on https_port and enabling SSL', config_file.https || false)
     .addOption(
@@ -214,12 +235,49 @@ if (options.reverse_proxy) {
     app.set('trust proxy', options.reverse_proxy_num_proxies);
 }
 
+// Stream grid previews. The SFU decodes a JPEG per stream and serves it on its
+// own port; proxying here keeps the browser on a single origin so the grid can
+// use relative /snapshots/<id>.jpg URLs and no extra firewall port is needed in
+// front of the SFU.
+if (options.snapshot_proxy) {
+    const snapshotHost = options.snapshot_proxy_host;
+    const snapshotPort = options.snapshot_proxy_port;
+
+    app.get(['/snapshots', '/snapshots/*'], (req, res) => {
+        const upstream = http.request(
+            {
+                host: snapshotHost,
+                port: snapshotPort,
+                method: 'GET',
+                path: req.originalUrl,
+                headers: { accept: req.headers.accept || '*/*' }
+            },
+            (upstreamRes) => {
+                res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);
+                upstreamRes.pipe(res);
+            }
+        );
+
+        upstream.on('error', (err: Error) => {
+            Logger.warn(`Snapshot proxy unavailable: ${err.message}`);
+            if (!res.headersSent) {
+                res.status(502).send('snapshot service unavailable');
+            }
+        });
+
+        upstream.end();
+    });
+
+    Logger.info(`Proxying /snapshots to http://${snapshotHost}:${snapshotPort}`);
+}
+
 const serverOpts: IServerConfig = {
     streamerPort: options.streamer_port,
     playerPort: options.player_port,
     sfuPort: options.sfu_port,
     peerOptions: options.peer_options,
-    maxSubscribers: options.max_players
+    maxSubscribers: options.max_players,
+    hideNonSfuStreamers: options.hide_non_sfu_streamers
 };
 
 if (options.serve) {

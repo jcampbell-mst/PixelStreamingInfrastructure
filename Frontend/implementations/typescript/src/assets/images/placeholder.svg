@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180">
+  <!-- SMPTE 75% colour bars over the pluge strip: the picture a broadcast chain
+       puts out when it has nothing to show. Shown on a tile until its first
+       preview arrives, and on any stream the SFU cannot snapshot. -->
+  <rect width="320" height="126" fill="#bfbfbf"/>
+  <rect x="45.71" width="45.71" height="126" fill="#bfbf00"/>
+  <rect x="91.43" width="45.71" height="126" fill="#00bfbf"/>
+  <rect x="137.14" width="45.71" height="126" fill="#00bf00"/>
+  <rect x="182.86" width="45.71" height="126" fill="#bf00bf"/>
+  <rect x="228.57" width="45.71" height="126" fill="#bf0000"/>
+  <rect x="274.29" width="45.71" height="126" fill="#0000bf"/>
+  <rect y="126" width="320" height="54" fill="#0b0d10"/>
+  <rect y="126" width="320" height="6" fill="#101317"/>
+</svg>
+

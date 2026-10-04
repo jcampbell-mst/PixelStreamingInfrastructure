@@ -179,7 +179,15 @@ export class SFUConnection extends EventEmitter implements IPlayer, IStreamer, L
             return;
         }
 
+        if (this.subscribedStreamer) {
+            Logger.warn(`SFU ${this.playerId} is already subscribed, unsubscribing first.`);
+            this.unsubscribe();
+        }
+
         this.subscribedStreamer = streamer;
+        // Register as a subscriber so the streamer can address messages back to
+        // this SFU, and so it counts against the streamer's maxSubscribers.
+        this.subscribedStreamer.subscribers.add(this.playerId);
         this.subscribedStreamer.on('layer_preference', this.layerPreferenceListener);
         this.subscribedStreamer.on('id_changed', this.streamerIdChangeListener);
         this.subscribedStreamer.on('disconnect', this.streamerDisconnectedListener);
@@ -202,6 +210,7 @@ export class SFUConnection extends EventEmitter implements IPlayer, IStreamer, L
         });
         this.sendToStreamer(disconnectedMessage);
 
+        this.subscribedStreamer.subscribers.delete(this.playerId);
         this.subscribedStreamer.off('layer_preference', this.layerPreferenceListener);
         this.subscribedStreamer.off('id_changed', this.streamerIdChangeListener);
         this.subscribedStreamer.off('disconnect', this.streamerDisconnectedListener);
@@ -232,6 +241,15 @@ export class SFUConnection extends EventEmitter implements IPlayer, IStreamer, L
             );
             return;
         }
+
+        // Only forward to players actually subscribed to this SFU.
+        if (!this.subscribers.has(message.playerId)) {
+            Logger.error(
+                `SFU ${this.streamerId} tried to forward a message to player ${message.playerId} which is not subscribed to it. Ignored.`
+            );
+            return;
+        }
+
         const player = this.server.playerRegistry.get(message.playerId);
         if (player) {
             delete message.playerId;

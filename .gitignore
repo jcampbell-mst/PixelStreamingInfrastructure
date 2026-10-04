@@ -11,3 +11,6 @@ coverage/
 common/types/*
 .nx/cache
 .nx/workspace-data
+SFU/snapshots/
+Extras/ffmpeg/win64-x64/ffmpeg.exe
+Extras/ffmpeg/linux-x64/ffmpeg

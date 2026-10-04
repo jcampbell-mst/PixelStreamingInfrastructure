@@ -133,13 +133,23 @@ export class StreamerConnection extends EventEmitter implements IStreamer, LogUt
     private forwardMessage(message: BaseMessage): void {
         if (!message.playerId) {
             Logger.warn(`No playerId specified, cannot forward message: ${stringify(message)}`);
-        } else {
-            const player = this.server.playerRegistry.get(message.playerId);
-            if (player) {
-                delete message.playerId;
-                LogUtils.logForward(this, player, message);
-                player.protocol.sendMessage(message);
-            }
+            return;
+        }
+
+        // Only forward to players actually subscribed to this streamer. Without
+        // this check a streamer could address any player on the server.
+        if (!this.subscribers.has(message.playerId)) {
+            Logger.warn(
+                `Streamer (${this.streamerId}) tried to forward a message to player ${message.playerId} which is not subscribed to it. Ignored.`
+            );
+            return;
+        }
+
+        const player = this.server.playerRegistry.get(message.playerId);
+        if (player) {
+            delete message.playerId;
+            LogUtils.logForward(this, player, message);
+            player.protocol.sendMessage(message);
         }
     }
 
@@ -157,11 +167,21 @@ export class StreamerConnection extends EventEmitter implements IStreamer, LogUt
     }
 
     private onDisconnectPlayerRequest(message: Messages.disconnectPlayer): void {
-        if (message.playerId) {
-            const player = this.server.playerRegistry.get(message.playerId);
-            if (player) {
-                player.protocol.disconnect(1011, message.reason);
-            }
+        if (!message.playerId) {
+            return;
+        }
+
+        // A streamer may only disconnect players subscribed to it.
+        if (!this.subscribers.has(message.playerId)) {
+            Logger.warn(
+                `Streamer (${this.streamerId}) tried to disconnect player ${message.playerId} which is not subscribed to it. Ignored.`
+            );
+            return;
+        }
+
+        const player = this.server.playerRegistry.get(message.playerId);
+        if (player) {
+            player.protocol.disconnect(1011, message.reason);
         }
     }
 

@@ -2,7 +2,7 @@
 
 A Direct replacement for cirrus.
 
-Wilbur is a small intermediary application that sits between streamers and other peers. It handles the initial connection negotiations and some other small ongoing control messages between peers as well as acting as a simple web server for serving the [Frontend](/Frontend/README.md) web application.
+Wilbur is a small intermediary application that sits between streamers and other peers. It handles the initial connection negotiations and some other small ongoing control messages between peers as well as acting as a simple web server for serving the [Frontend](/Frontend/README.md) web application. What it serves is a stream grid: `grid.html` is the homepage, `wall.html` is the multiviewer, and `player.html` is a single feed.
 
 Differences of behaviour from the old cirrus are described [here](from_cirrus.md).
 
@@ -54,9 +54,13 @@ Options:
   --player_port <port>          Sets the listening port for player connections. (default: "80")
   --sfu_port <port>             Sets the listening port for SFU connections. (default: "8889")
   --max_players <number>        Sets the maximum number of subscribers per streamer. 0 = unlimited (default: "0")
+  --hide_non_sfu_streamers      Hides non-SFU streamers from players. Players can only see and subscribe to SFUs. (default: false)
   --serve                       Enables the webserver on player_port. (default: true)
   --http_root <path>            Sets the path for the webserver root. (default: "D:\\PixelStreamingInfrastructure\\SignallingWebServer\\www")
-  --homepage <filename>         The default html file to serve on the web server. (default: "player.html")
+  --homepage <filename>         The default html file to serve on the web server. (default: "grid.html")
+  --snapshot_proxy              Proxies /snapshots on the webserver through to the SFU snapshot API, so stream previews are served from the same origin as the rest of the frontend. (default: false)
+  --snapshot_proxy_host <host>  The host of the SFU snapshot API to proxy to. (default: "127.0.0.1")
+  --snapshot_proxy_port <port>  The port of the SFU snapshot API to proxy to. (default: "8891")
   --https                       Enables the webserver on https_port and enabling SSL (default: false)
   --https_port <port>           Sets the listen port for the https server. (default: 443)
   --ssl_key_path <path>         Sets the path for the SSL key file. (default: "certificates/client-key.pem")
@@ -78,9 +82,13 @@ These CLI options can also be described in a `config.json` (default config file 
 	"streamer_port": "8888",
 	"player_port": "80",
 	"sfu_port": "8889",
+	"hide_non_sfu_streamers": false,
 	"serve": true,
 	"http_root": "www",
-	"homepage": "player.html",
+	"homepage": "grid.html",
+	"snapshot_proxy": true,
+	"snapshot_proxy_host": "127.0.0.1",
+	"snapshot_proxy_port": "8891",
 	"log_config": false,
 	"stdin": false
 }
@@ -90,6 +98,169 @@ Given these options, to start the server with the closest behaviour as the old c
 npm start -- --console_messages --https_redirect verbose --serve --log_config --http_root www --homepage player.html
 ```
 Note that `www` being used as the http root assumes your Frontend is in that directory.
+
+## Snapshot proxy
+
+The SFU can decode a JPEG preview out of each hosted stream ([details](../SFU/README.md#stream-snapshots)), which the bundled stream grid uses as the thumbnail on every tile. Those frames are served by the SFU on its own port, and cannot be written into `http_root` because rebuilding the frontend wipes that directory.
+
+With `snapshot_proxy` enabled, requests for `/snapshots` and `/snapshots/*` on the player port are forwarded to the SFU snapshot API and the response is passed back verbatim, so the frontend can fetch previews from its own origin with no CORS setup and no second port to expose:
+
+```
+GET /snapshots                      ->  {"snapshots":[{"sfuId":"SFU-MyApp","state":"running","hasImage":true}]}
+GET /snapshots/SFU-MyApp.jpg       ->  the latest frame, or 404 if there is not one yet
+```
+
+Set `snapshot_proxy_host`/`snapshot_proxy_port` to wherever the SFU snapshot API is listening. If it is unreachable the proxy answers 502 and logs `Snapshot proxy unavailable`, rather than breaking the rest of the server. The route only exists when the option is on, so leaving it off costs nothing.
+
+## Stream grid status
+
+A tile says two different things, and keeps them apart on purpose:
+
+* The **badge** is a tally of the stream, and nothing else. It reads `Live` whenever the signalling server names the stream in its streamer list, which is polled every five seconds. It reads `Unknown` only while that list cannot be refreshed, i.e. from the moment the web socket closes until it is reconnected, because then no tile can honestly claim to be live. A preview failing says nothing about the stream, so a failed snapshot never moves this badge.
+* The **small line under the tile** is preview health. When something is wrong there it is shown in amber, always with wording that names the problem, so colour is never the only cue. The thumbnail's colour bar doubles as a "signal present" cue: it is drawn at full strength once a frame has loaded and dimmed while one is still awaited.
+
+| Line | Means |
+| --- | --- |
+| `Updated just now`, `Updated 3m ago` | The preview on the tile is current; the age comes from the snapshot index |
+| `Preview is out of date` | The newest frame is older than twice the refresh interval (amber) |
+| `Preview unavailable` | The snapshot worker has been retried repeatedly and never wrote a frame (amber) |
+| `Waiting for a decode slot` | The worker for this stream is queued behind `snapshots.maxConcurrent` others |
+| `Waiting for video` | There is no preview and no snapshot record yet — nothing has been published, or the codec is not one the snapshot worker supports |
+
+That last distinction is the useful one when a preview is missing: `Preview unavailable` points at the snapshot pipeline (check `ffmpeg` is present and what the SFU logs for that stream), whereas `Waiting for video` means the SFU never got a video producer to decode from in the first place.
+
+## Stream grid backdrop
+
+The stream grid (`grid.html`) draws a decorative animated backdrop behind the tiles. Because browsers composite that alongside every other window, it is deliberately restricted to compositor-only work: the drifting orbs animate `transform` only, and the softness of the preview montage is baked into the 128x72 canvas at capture time rather than applied as a CSS `filter` over a full-viewport layer.
+
+The montage is a single `<canvas>` at a constant opacity, and it cross-fades between frames *inside* the canvas rather than by animating the opacity of two stacked elements. That keeps the compositor from having to upscale and blend two full viewports on every frame of a fade, and from promoting and un-promoting a layer around each one.
+
+It also disables itself when the machine cannot afford it:
+
+* `html.calm` is applied when the measured frame rate drops below 48 fps, or at load time when WebGL reports a software renderer. The orbs and the montage are then removed and replaced with a static gradient.
+* `html.nowash` is applied first, while the page is still settling, when the frame rate drops below 58 fps. Only the montage goes away; the orbs stay. Fading the montage is the cheaper concession, so it is tried before giving up on the backdrop entirely.
+* `grid.html?fx=off` forces calm mode, `grid.html?fx=nowash` keeps the orbs but never shows the montage, and `grid.html?fx=on` keeps the backdrop on regardless of the measurements.
+* The topbar's **Backdrop** button cycles Auto / On / No montage / Off at runtime. The choice is stored in `localStorage` under `ps-grid-fx`, and an explicit `?fx=` in the URL overrides it for that page load.
+
+### Grid operators' controls
+
+The grid carries a few controls for someone who watches the same feeds all day rather than browsing them:
+
+* **Pin** holds a feed at the top of the grid. The pin leads every sort, so it outranks the sort key itself, and the set is remembered under `ps-grid-pins` — the arrangement survives a reload without surprising a different browser profile.
+* **Sort** by name, by liveness (`Live`, then `Idle`, then `Unknown`) or by viewer count, stored under `ps-grid-sort`.
+* **Drop and return alerts.** A feed that stops, or comes back, puts a line in the alert rail below the grid and can also raise a desktop notification (`ps-grid-alert-notify`) and a short tone (`ps-grid-alert-sound`). The alerts are deliberately damped: nothing is reported for the first eight seconds after the page loads, a feed has to hold its new state for fifteen seconds before it is announced, and each feed is announced at most once every forty-five seconds, so a flapping streamer cannot turn the rail into noise. Notifications need a secure origin, so on plain HTTP the button says why it is unavailable and only the rail is used.
+* **Previews load only for tiles that are on screen.** Every tile is observed with an `IntersectionObserver`, so a tile scrolled out of view fetches nothing. An image that fails keeps the frame it already had and retries shortly afterwards, because a preview caught mid-write is not a stream that has gone away.
+
+## Multiviewer wall
+
+`wall.html` is the same stream list rendered as a wall of *live* players instead of previews: every cell is a bare-mode `player.html` in an iframe (`AutoConnect`, `AutoPlayVideo`, `StartVideoMuted`, `Chrome=0`), so each one is a real WebRTC subscription to the SFU that keeps playing on its own.
+
+* Layouts are `Auto` (the smallest square that holds every feed), 1-up, 2x2, 3x3 and 4x4, from the buttons in the bar or the `0`-`4` keys, and the choice is stored in `localStorage`. A fixed layout is a ceiling on what is watched: feeds beyond it are never subscribed, so a 2x2 wall on a six-feed server opens four players, not six.
+* The index chip on a tile is its position in the whole list (`3/6`) rather than in the visible window, so the wall and the grid agree about which feed is which.
+* **Fullscreen** asks the wall itself to go fullscreen (`f`), so the display fills with the wall rather than one cell.
+* **Sound** unmutes every tile by reloading it with `StartVideoMuted=false`, which is the only reliable way to change a muted autoplaying player. Tiles start muted because a browser will not begin audible playback on a page of many videos without a gesture.
+* The bar is the grid's bar: same back link, same feed count, same running clock, same auto-hide.
+
+## Player page
+
+Opening `player.html` with a `StreamerId` starts that stream straight away: the page sets `AutoConnect` and `AutoPlayVideo` as its own defaults, so arriving from a grid tile plays the feed with no extra click. Both remain ordinary URL settings, so `player.html?StreamerId=SFU-Feed&AutoConnect=false` still gives you the manual flow.
+
+While the player is connecting it covers the stage with its own loader rather than the library's static text, and each stage has a different animation so the state is readable at a glance:
+
+| Stage | Indicator | Steps reached | Colour |
+| --- | --- | --- | --- |
+| Booting the client | three bouncing dots | — | grey |
+| Connecting to the signalling server | rotating orbit | Signalling | cyan |
+| Negotiating WebRTC | two counter-rotating rings | WebRTC | yellow |
+| Connected, no frames yet | expanding ripples | Video | magenta |
+| Receiving and warming up playback | sweeping progress bar | Video | lifted blue |
+| Live | tick that draws itself, then the loader fades out | Live | green |
+
+The colours are the bar palette described under [Colour-bar theming](#colour-bar-theming); the step rail along the bottom of the loader walks the same ramp, so the two cues agree.
+
+Terminal states are deliberately *not* covered by this loader: when the connection fails or the library wants a click to play, the loader steps aside and hands over to the library's own overlay, because that overlay carries the action that recovers the stream. A feed that simply does not exist is the exception, and is handled below.
+
+Audio is the other thing the library leaves to the host page. Browsers refuse to start audible playback without a gesture, so the page starts muted when it is blocked and shows a speaker button in the top bar to unmute. A stream that is still connecting after 15 seconds gets a line saying so and a **Reconnect** button.
+
+### A feed that is not there
+
+If the page is opened for a `StreamerId` the signalling server does not have, the loader stays up and names it: *"SFU-Feed" is not on air right now. It will play here as soon as the streamer publishes it.* It then keeps asking, on a growing interval (3 s, 5 s, 10 s, 20 s, 30 s), until the feed appears — with the same **Reconnect now** button for anyone who would rather not wait. This is deliberate: the library's own answer to an unknown streamer is to step aside for a streamer list that this page does not render, which leaves a black stage with nothing on it.
+
+### Self-healing
+
+A wall display or a control room should never need a person to click anything, so the player drives its own recovery and narrates it:
+
+* The library retries a dropped connection by itself for eight seconds. The page watches instead of competing; only once there is no transport, nothing in flight **and** the library's grace has expired does the page's own loop take over and ask for a reconnect itself. Getting this wrong is expensive — a loop that reconnects on top of a library that is already reconnecting tears down each fresh transport about a second after ICE completes, which looks exactly like an unstable streamer.
+* Once the page is driving, attempts are spaced 3 s / 5 s / 10 s / 20 s / 30 s apart.
+* A transport that comes back but never delivers a first frame counts as a failed attempt after 20 seconds and is taken down, rather than being waited on indefinitely.
+* A live picture whose frame counter stops advancing raises the **stalled** cue after 6 seconds. If frames return the cue clears; if they do not, the page forces one reconnect after 15 seconds, then leaves that feed alone for 45 seconds so a genuinely frozen streamer cannot be hammered.
+* The same stage rail reports the whole cycle, so a recovery looks exactly like a first connection.
+
+### Keyboard shortcuts
+
+The player is meant to be driven from a desk, so the keys are the whole UI: `m` sound, `f` fullscreen, `p` picture-in-picture, `s` statistics, `h` or `?` the shortcut card, and `Escape` to close the card. Any key press also brings the chrome back, so the shortcuts are discoverable without a mouse.
+
+### Player chrome
+
+The bar across the top is the whole of the player's own UI: back to the grid, the stream name, the connection state, and four buttons — sound, statistics, picture-in-picture, and fullscreen. It floats *over* the video rather than sitting above it, so the picture stays full-bleed and hiding the bar never resizes the video element (which would otherwise cost a decode-resolution round trip). Picture-in-picture is hidden entirely on browsers that do not offer it.
+
+The bar hides itself after three seconds without pointer or keyboard activity and returns on the first pointer move, tap, or key press. It deliberately stays up while the loader is on screen — there is always something to read — and while the statistics panel is open. Under `prefers-reduced-motion` it simply appears and disappears.
+
+Two library features are switched off on purpose:
+
+* **The connection strength (QP) indicator.** The connection state in the bar already says what a viewer needs, and the indicator's coloured circle reads as noise against the test-card theme.
+* **The settings panel**, removed outright along with its *Commands* section (request keyframe, restart stream). Quality, codec, FPS, and bitrate follow what the server sends; a viewer cannot retune them. A deployment that needs a fixed value sets the usual URL parameters (`PreferredQuality`, `PreferredCodec`, `WebRTCMinBitrate`, `WebRTCMaxBitrate`, `WebRTCFPS`) or `Config` defaults.
+
+The statistics panel is the only library panel left, opened from the pulse button in the bar. Its config supplies an explicit empty `sectionVisibility` map: a panel config *without* that key makes the library's `isSectionEnabled()` call `hasOwnProperty` on `undefined` while the panel is being built, which throws inside the `Application` constructor and takes the entire player down with it. An empty map means "every section enabled", which is what the library does when no config is passed at all.
+
+## Colour-bar theming
+
+Both pages are themed around the SMPTE 75% colour bars, because this frontend is used in broadcast production where test cards are the familiar reference. The palette is declared once per stylesheet as custom properties in `:root`, taken from the 75% (not 100%) bars:
+
+| Token | Bar | Value |
+| --- | --- | --- |
+| `--bar-grey` | Grey | `#bfbfbf` |
+| `--bar-yellow` | Yellow | `#bfbf00` |
+| `--bar-cyan` | Cyan | `#00bfbf` |
+| `--bar-green` | Green | `#00bf00` |
+| `--bar-magenta` | Magenta | `#bf00bf` |
+| `--bar-red` | Red | `#bf0000` |
+| `--bar-blue` | Blue | `#0000bf` |
+| `--bar-blue-lit` | Blue, lifted | `#4a6bff` |
+
+`--bars` is the seven-stop gradient built from those tokens, drawn as a strip along the top of the top bar, as the app's small test-card chip next to the wordmark, and as a thin signal line across the bottom of each grid tile that brightens once a preview frame has loaded. The player reuses the same tokens for its per-stage loader colours and for the step rail, so the rail's cyan / yellow / magenta / green ramp reads as one sequence with the stage tints.
+
+Two rules keep the theme from getting in the way of the job:
+
+* **Red is reserved for faults.** It is never used decoratively, so a red element on screen means something is wrong. Blue is used at its lifted value wherever it is a thin animated stroke, because the true 75% blue is nearly invisible on the dark background.
+* **Colour is never the only cue.** Every coloured element also carries text, a shape, or an `aria-live` announcement, so the state is still legible in greyscale or to a user who cannot distinguish these hues. The strips and swatches are static backgrounds, not animations, so they cost nothing to composite.
+
+## Installable app and its offline shell
+
+The pages are a small PWA. `manifest.webmanifest` gives the app a name, the theme colour (`#0d0f12`) and three icons including a maskable one, and `sw.js` precaches the app shell — `grid.html`, `player.html`, `wall.html`, the three bundles, the three stylesheets, the icons and the manifest — so the pages open instantly and still render something sensible while the signalling server is briefly unreachable.
+
+Nothing live is ever cached: the streamer list, the snapshot index, the snapshot JPEGs themselves and every WebRTC or signalling socket go to the network every time, because a stale preview or a stale feed list would be worse than no preview at all. The bundles are emitted with stable names, so `copy-webpack-plugin` stamps each build into the cache name and the previous cache is dropped on activation.
+
+Service workers, notifications, Wake Lock and picture-in-picture all need a *trusted* origin. `http://localhost` counts; any other host name needs `https://`. `make_cert.bat` creates a local certificate authority and a server certificate covering the loopback names this app is used on, and `start_local.bat --https` then serves the frontend over TLS:
+
+```
+make_cert.bat --trust      once, from an elevated prompt, to import the CA
+start_local.bat --https
+```
+
+The certificates live in `SignallingWebServer\certificates` and are not committed; `make_cert.bat` will not overwrite an existing set unless it is given `--force`. To use the same app from another machine, install `ps-local-ca-cert.pem` as a trusted root there first.
+
+## Starting everything locally
+
+`start_local.bat` (at the repository root) starts both halves of the stack in their own windows and prints the URLs, waiting for Wilbur to listen before it starts the SFU:
+
+```
+start_local.bat             local mode - the SFU advertises this machine
+start_local.bat --cloud     cloud mode - the SFU advertises the public IP it looks up
+start_local.bat --https     serve the frontend on 443 with the certificates above
+```
+
+Wilbur is started with `--hide_non_sfu_streamers`, so players only ever see SFU feeds, and with `--snapshot_proxy`, so previews come from the frontend's own origin. If the SFU port is already in use the script assumes Wilbur is already running and starts only the SFU, which makes it safe to re-run after one half has died.
 
 ## Development
 This implementation is built on the [Signalling](../Signalling) library which is supplied as a library for developing signalling applications. Visit its [documentation](../Signalling/docs) for more information.

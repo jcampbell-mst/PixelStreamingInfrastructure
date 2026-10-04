@@ -1,0 +1,791 @@
+:root {
+    --bg: #0d0f12;
+    --panel: #171a1f;
+    --border: #262b33;
+    --text: #e8eaed;
+    --muted: #8b939f;
+    --accent: #4c8dff;
+
+    /* SMPTE 75% colour bars, the palette this whole app is themed around. Each
+       connection stage is painted with one of them, so the loading screen reads
+       like a test card running through its phases. 75% blue is nearly black, so
+       the thin animated marks use a lifted blue instead - the wide swatches keep
+       the authentic colour. */
+    --bar-grey: #bfbfbf;
+    --bar-yellow: #bfbf00;
+    --bar-cyan: #00bfbf;
+    --bar-green: #00bf00;
+    --bar-magenta: #bf00bf;
+    --bar-red: #bf0000;
+    --bar-blue: #0000bf;
+    --bar-blue-lit: #4a6bff;
+    /* 75% red is too dark for a thin animated mark, so the reconnect spinner gets a
+       lifted red while the swatches keep the authentic colour. */
+    --bar-red-lit: #ff6b6b;
+    --bars: linear-gradient(
+        90deg,
+        var(--bar-grey) 0 14.29%,
+        var(--bar-yellow) 0 28.57%,
+        var(--bar-cyan) 0 42.86%,
+        var(--bar-green) 0 57.14%,
+        var(--bar-magenta) 0 71.43%,
+        var(--bar-red) 0 85.71%,
+        var(--bar-blue) 0 100%
+    );
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Montserrat, system-ui, -apple-system, Segoe UI, Arial, sans-serif;
+}
+
+#shell {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    height: 100svh;
+}
+
+/* The top bar floats over the video instead of taking a row of its own, so the picture stays
+   full-bleed when the chrome hides itself. */
+#topbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    height: 3rem;
+    padding: 0 1rem;
+    /* Colour bars along the top edge, matching the grid page. */
+    background-color: #171a1fe6;
+    background-image: var(--bars);
+    background-repeat: no-repeat;
+    background-size: 100% 3px;
+    background-position: top left;
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 60;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+/* Idle chrome: the bar slides away and stops taking pointer input. Any pointer or key input on
+   the page brings it back (see the chrome handling in player.ts). */
+#shell.is-chrome-hidden #topbar {
+    transform: translateY(-100%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+#backToGrid {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.85rem 0.35rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+#backToGrid:hover,
+#backToGrid:focus-visible {
+    color: var(--text);
+    border-color: var(--accent);
+    background: #1f242b;
+    outline: none;
+}
+
+#backToGrid svg {
+    width: 1rem;
+    height: 1rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+#streamName {
+    font-size: 0.9rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#statusGroup {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-left: auto;
+}
+
+#connState {
+    font-size: 0.78rem;
+    color: var(--muted);
+}
+
+/* Top bar buttons, including the fullscreen and stats triggers handed to the ui-library. */
+#soundToggle,
+#statsToggle,
+#pipToggle,
+#helpToggle,
+#fullscreenToggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: #1b1f26;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+/* The icon-only buttons stay square next to the labelled sound button. */
+#statsToggle,
+#pipToggle,
+#helpToggle,
+#fullscreenToggle {
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0.5rem;
+}
+
+#soundToggle[hidden],
+#pipToggle[hidden],
+#helpToggle[hidden] { display: none; }
+
+#soundToggle:hover,
+#soundToggle:focus-visible,
+#statsToggle:hover,
+#statsToggle:focus-visible,
+#pipToggle:hover,
+#pipToggle:focus-visible,
+#helpToggle:hover,
+#helpToggle:focus-visible,
+#fullscreenToggle:hover,
+#fullscreenToggle:focus-visible {
+    border-color: var(--accent);
+    background: #232830;
+    outline: none;
+}
+
+#statsToggle.is-active,
+#pipToggle.is-active,
+#helpToggle.is-active {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+#helpToggle.is-active svg,
+#pipToggle.is-active svg { stroke: var(--accent); }
+
+#soundToggle svg,
+#statsToggle svg,
+#pipToggle svg,
+#helpToggle svg,
+#fullscreenToggle svg {
+    width: 1rem;
+    height: 1rem;
+    flex: 0 0 auto;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+#fullscreenToggle svg { stroke-width: 2; }
+#pipToggle svg rect:first-child { stroke-width: 2; }
+
+/* Live encoder quality, reported by the streamer. The bands are the usual
+   broadcast read on a quantiser: low is good. Red is deliberately not used -
+   a quantiser is information, not a fault. */
+.qp-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.3rem;
+    padding: 0.25rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: #1b1f26;
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.qp-chip b {
+    font-size: 0.8rem;
+    letter-spacing: 0.02em;
+    color: var(--bar-green);
+}
+
+.qp-chip[data-qp='fair'] b { color: var(--bar-yellow); }
+.qp-chip[data-qp='low'] b { color: var(--bar-magenta); }
+
+/* Wall tiles embed the player with no chrome at all: the tile supplies the labels. */
+#shell.is-bare #topbar { display: none; }
+
+#soundToggle .spk-body { fill: currentColor; stroke: none; }
+#soundToggle .spk-slash { opacity: 0; }
+#soundToggle.is-muted { color: var(--muted); }
+#soundToggle.is-muted .spk-wave,
+#soundToggle.is-muted .spk-wave2 { opacity: 0; }
+#soundToggle.is-muted .spk-slash { opacity: 1; }
+
+#stage {
+    flex: 1 1 auto;
+    position: relative;
+    min-height: 0;
+    background: #000;
+}
+
+/* --- Staged loading overlay ---------------------------------------------
+   Sits above the library's own overlays (z-index 30) and reports which
+   phase of the connection we are in. Never swallows clicks: the wrapper is
+   pointer-events:none so the library's own overlays keep working. */
+
+#stageLoader {
+    position: absolute;
+    inset: 0;
+    z-index: 45;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.05rem;
+    padding: 2rem;
+    text-align: center;
+    pointer-events: none;
+    background: radial-gradient(125% 95% at 50% 42%, #161b22 0%, #0a0c0f 72%);
+    transition: opacity 0.45s ease, visibility 0.45s ease;
+}
+
+#stageLoader.is-hidden {
+    opacity: 0;
+    visibility: hidden;
+}
+
+/* Hold the finished state on screen long enough for the check to draw. */
+#stageLoader.is-done.is-hidden {
+    transition-delay: 0.8s;
+}
+
+/* Each stage is tinted with one of the bars, in bar order, so the sequence
+   cyan -> yellow -> magenta -> green is itself a progress cue. Red is the one
+   bar left unused: it stays reserved for genuine faults. */
+#stageLoader { --stage: var(--bar-grey); --stage-glow: rgba(191, 191, 191, 0.32); }
+#stageLoader[data-stage='signalling'] { --stage: var(--bar-cyan); --stage-glow: rgba(0, 191, 191, 0.34); }
+#stageLoader[data-stage='negotiating'] { --stage: var(--bar-yellow); --stage-glow: rgba(191, 191, 0, 0.32); }
+#stageLoader[data-stage='waiting'] { --stage: var(--bar-magenta); --stage-glow: rgba(191, 0, 191, 0.34); }
+#stageLoader[data-stage='starting'] { --stage: var(--bar-blue-lit); --stage-glow: rgba(74, 107, 255, 0.36); }
+#stageLoader[data-stage='live'] { --stage: var(--bar-green); --stage-glow: rgba(0, 191, 0, 0.34); }
+/* A dropped feed is the one genuine fault the player has, so it takes the one bar
+   the decorative ramp leaves alone. */
+#stageLoader[data-stage='reconnecting'] { --stage: var(--bar-red-lit); --stage-glow: rgba(191, 0, 0, 0.4); }
+
+/* The overlay reads as a test card: a bars strip along its lower edge. */
+#stageLoader::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 4px;
+    background-image: var(--bars);
+    background-size: 100% 100%;
+    opacity: 0.45;
+}
+
+.loader-mark {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 5.5rem;
+    height: 5.5rem;
+}
+
+.loader-mark > * {
+    position: absolute;
+    inset: 0;
+    display: none;
+    place-items: center;
+}
+
+#stageLoader[data-stage='boot'] .mark-dots,
+#stageLoader[data-stage='signalling'] .mark-orbit,
+#stageLoader[data-stage='negotiating'] .mark-ring,
+#stageLoader[data-stage='waiting'] .mark-ripple,
+#stageLoader[data-stage='negotiating'] .mark-ring,
+#stageLoader[data-stage='reconnecting'] .mark-loop,
+#stageLoader[data-stage='starting'] .mark-sweep,
+#stageLoader[data-stage='live'] .mark-check {
+    display: grid;
+}
+
+/* boot - three bouncing dots */
+.mark-dots {
+    grid-auto-flow: column;
+    gap: 0.55rem;
+}
+
+.mark-dots span {
+    width: 0.62rem;
+    height: 0.62rem;
+    border-radius: 50%;
+    background: var(--stage);
+    animation: loaderDot 1.15s ease-in-out infinite;
+}
+
+.mark-dots span:nth-child(2) { animation-delay: 0.16s; background: var(--stage-glow); }
+.mark-dots span:nth-child(3) { animation-delay: 0.32s; }
+
+@keyframes loaderDot {
+    0%, 100% { transform: translateY(-0.34rem) scale(0.82); opacity: 0.55; }
+    50% { transform: translateY(0.34rem) scale(1); opacity: 1; }
+}
+
+/* signalling - dashed ring with an orbiting dot */
+.mark-orbit { animation: spin 1.7s linear infinite; }
+
+.mark-orbit::before {
+    content: '';
+    width: 4.1rem;
+    height: 4.1rem;
+    border: 2px dashed rgba(140, 160, 190, 0.34);
+    border-radius: 50%;
+}
+
+.mark-orbit span {
+    position: absolute;
+    top: 0.3rem;
+    left: 50%;
+    width: 0.68rem;
+    height: 0.68rem;
+    margin-left: -0.34rem;
+    border-radius: 50%;
+    background: var(--stage);
+    box-shadow: 0 0 0.7rem var(--stage-glow);
+}
+
+/* negotiating - two counter-rotating arcs */
+.mark-ring::before,
+.mark-ring-alt::before {
+    content: '';
+    width: 4.3rem;
+    height: 4.3rem;
+    border: 2.5px solid transparent;
+    border-top-color: var(--stage);
+    border-right-color: var(--stage-glow);
+    border-radius: 50%;
+    animation: spin 1.05s linear infinite;
+}
+
+.mark-ring-alt::before {
+    width: 3rem;
+    height: 3rem;
+    border-top-color: var(--stage-glow);
+    border-right-color: transparent;
+    border-left-color: var(--stage);
+    animation: spin 0.72s linear infinite reverse;
+}
+
+/* waiting - expanding radar ripples */
+.mark-ripple span {
+    grid-area: 1 / 1;
+    width: 1.6rem;
+    height: 1.6rem;
+    border: 2px solid var(--stage);
+    border-radius: 50%;
+    animation: rippleOut 2.1s ease-out infinite;
+}
+
+.mark-ripple span:nth-child(2) { animation-delay: 1.05s; }
+
+@keyframes rippleOut {
+    0% { transform: scale(0.42); opacity: 0.9; }
+    100% { transform: scale(3.1); opacity: 0; }
+}
+
+/* starting - indeterminate sweep bar */
+.mark-sweep {
+    inset: auto;
+    width: 11rem;
+    height: 0.32rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(140, 160, 190, 0.18);
+}
+
+.mark-sweep span {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -45%;
+    width: 45%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, transparent, var(--stage), var(--stage-glow));
+    animation: sweepBar 1.25s cubic-bezier(0.5, 0.05, 0.5, 0.95) infinite;
+}
+
+@keyframes sweepBar {
+    0% { left: -45%; }
+    100% { left: 100%; }
+}
+
+/* reconnecting - a circular arrow, the one mark that only means "try again" */
+.mark-loop svg {
+    width: 4.4rem;
+    height: 4.4rem;
+    fill: none;
+    stroke: var(--stage);
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    animation: spin 1.5s linear infinite;
+}
+
+/* live - drawn check mark */
+.mark-check {
+    width: 5.5rem;
+    height: 5.5rem;
+}
+
+.mark-check path {
+    fill: none;
+    stroke: var(--stage);
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 26;
+    stroke-dashoffset: 26;
+    animation: drawCheck 0.55s ease-out 0.1s forwards;
+}
+
+@keyframes drawCheck {
+    to { stroke-dashoffset: 0; }
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+#loaderTitle {
+    margin: 0;
+    font-size: 1.12rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+#loaderDetail {
+    margin: 0;
+    max-width: 30rem;
+    min-height: 1.15em;
+    font-size: 0.84rem;
+    color: var(--muted);
+}
+
+#loaderSteps {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    margin: 0.35rem 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.69rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #575e6a;
+}
+
+#loaderSteps li {
+    --step: var(--bar-grey);
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    transition: color 0.3s ease;
+}
+
+/* The rail is the same ramp in the same order as the loader tints, so the two
+   cues agree. */
+#loaderSteps li:nth-child(1) { --step: var(--bar-cyan); }
+#loaderSteps li:nth-child(2) { --step: var(--bar-yellow); }
+#loaderSteps li:nth-child(3) { --step: var(--bar-magenta); }
+#loaderSteps li:nth-child(4) { --step: var(--bar-green); }
+
+#loaderSteps li::before {
+    content: '';
+    width: 0.42rem;
+    height: 0.42rem;
+    border-radius: 50%;
+    background: #2c333d;
+    transition: background 0.3s ease, opacity 0.3s ease, transform 0.3s ease;
+}
+
+#loaderSteps li:not(:last-child)::after {
+    content: '';
+    width: 1.5rem;
+    height: 1px;
+    background: #2c333d;
+}
+
+#loaderSteps li.is-done { color: var(--step); opacity: 0.78; }
+#loaderSteps li.is-done::before { background: var(--step); opacity: 1; }
+#loaderSteps li.is-done:not(:last-child)::after { background: var(--step); opacity: 0.5; }
+
+#loaderSteps li.is-current { color: var(--step); opacity: 1; }
+
+#loaderSteps li.is-current::before {
+    background: var(--step);
+    opacity: 1;
+    animation: pulseDot 1.4s ease-in-out infinite;
+}
+
+/* Colour-agnostic pulse: it scales and brightens the step's own dot, so no
+   colour maths is needed per stage. */
+@keyframes pulseDot {
+    0%, 100% { opacity: 0.5; transform: scale(0.82); }
+    50% { opacity: 1; transform: scale(1.28); }
+}
+
+#loaderRetry {
+    pointer-events: auto;
+    margin-top: 0.35rem;
+    padding: 0.45rem 1.05rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: #1b1f26;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+#loaderRetry[hidden] { display: none; }
+
+#loaderRetry:hover,
+#loaderRetry:focus-visible {
+    border-color: var(--accent);
+    background: #232830;
+    outline: none;
+}
+
+/* --- Stage cues ----------------------------------------------------------
+   Small strips that say something about the picture itself: a stalled frame,
+   or the one-time shortcut hint. They sit above the video, but only their
+   buttons take pointer input, so the stream stays clickable underneath. */
+
+.stage-chip {
+    position: absolute;
+    bottom: 1.1rem;
+    left: 1.1rem;
+    z-index: 50;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    max-width: calc(100% - 2.2rem);
+    padding: 0.4rem 0.65rem 0.4rem 0.75rem;
+    border: 1px solid #333b47;
+    border-radius: 999px;
+    background: rgba(23, 26, 31, 0.92);
+    color: var(--text);
+    font-size: 0.78rem;
+    font-weight: 600;
+    pointer-events: none;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.stage-chip[hidden] { display: none; }
+
+.chip-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--bar-yellow);
+    box-shadow: 0 0 0 0.25rem rgba(191, 191, 0, 0.16);
+    animation: pulseDot 1.6s ease-in-out infinite;
+}
+
+.stage-chip[data-cue='offline'] .chip-dot {
+    background: var(--bar-red-lit);
+    box-shadow: 0 0 0 0.25rem rgba(191, 0, 0, 0.22);
+}
+
+.stage-chip button {
+    pointer-events: auto;
+    padding: 0.25rem 0.6rem;
+    border: 1px solid #333b47;
+    border-radius: 999px;
+    background: #1b1f26;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.stage-chip button:hover,
+.stage-chip button:focus-visible {
+    border-color: var(--accent);
+    background: #232830;
+    outline: none;
+}
+
+/* The shortcut hint is the quieter of the two and lives out of the way. */
+.stage-chip.is-hint {
+    left: auto;
+    right: 1.1rem;
+    padding: 0.4rem 0.8rem;
+    color: var(--muted);
+}
+
+/* --- Shortcut card ------------------------------------------------------- */
+
+.help-card {
+    position: absolute;
+    top: 4.2rem;
+    right: 1.1rem;
+    z-index: 55;
+    width: min(20rem, calc(100% - 2.2rem));
+    padding: 1rem 1.1rem 0.9rem;
+    border: 1px solid #333b47;
+    border-radius: 0.9rem;
+    background: rgba(20, 23, 28, 0.96);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.help-card[hidden] { display: none; }
+
+/* A test card always has bars on it, so the card wears them too. */
+.help-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    height: 3px;
+    border-radius: 0.9rem 0.9rem 0 0;
+    background-image: var(--bars);
+}
+
+.help-card h2 {
+    margin: 0 0 0.7rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.help-card dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 0.4rem 0.85rem;
+    margin: 0 0 0.95rem;
+}
+
+.help-card dl > div { display: contents; }
+
+.help-card dt { display: flex; }
+
+.help-card dd {
+    margin: 0;
+    font-size: 0.8rem;
+}
+
+.help-card button {
+    width: 100%;
+    padding: 0.42rem;
+    border: 1px solid #333b47;
+    border-radius: 0.6rem;
+    background: #1b1f26;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.help-card button:hover,
+.help-card button:focus-visible {
+    border-color: var(--accent);
+    background: #232830;
+    outline: none;
+}
+
+kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.7rem;
+    padding: 0.15rem 0.4rem;
+    border: 1px solid #333b47;
+    border-bottom-width: 2px;
+    border-radius: 0.4rem;
+    background: #12161b;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mark-dots span,
+    .mark-orbit,
+    .mark-ring::before,
+    .mark-ring-alt::before,
+    .mark-ripple span,
+    .mark-sweep span,
+    #loaderSteps li.is-current::before {
+        animation: none;
+    }
+
+    .mark-sweep span { left: 0; width: 100%; opacity: 0.6; }
+    .mark-ripple span:first-child { opacity: 0.6; }
+    .mark-ripple span:nth-child(2) { display: none; }
+    .mark-check path { animation: none; stroke-dashoffset: 0; }
+
+    .mark-loop svg { animation: none; }
+
+    /* The stall cue keeps its colour, it just stops throbbing. */
+    .chip-dot { animation: none; }
+
+    /* The chrome still hides itself, it just does not slide. */
+    #topbar { transition: none; }
+}

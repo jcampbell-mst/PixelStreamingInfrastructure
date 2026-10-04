@@ -124,12 +124,34 @@ export class PlayerConnection implements IPlayer, LogUtils.IMessageLogger {
         });
     }
 
+    /**
+     * Whether a player is allowed to see and subscribe to the given streamer.
+     * When the server is configured with `hideNonSfuStreamers`, only SFUs are
+     * visible, which keeps raw (send-only) streamers hidden from players.
+     */
+    private isVisibleToPlayers(streamer: IStreamer): boolean {
+        if (!this.server.config.hideNonSfuStreamers) {
+            return true;
+        }
+        return streamer.getStreamerInfo().type === 'SFU';
+    }
+
+    /**
+     * The id of the first streamer a player is allowed to see, or null if there
+     * are none. Used by the auto-subscribe fallback so a player that sends an
+     * offer before subscribing can never be attached to a hidden streamer.
+     */
+    private getFirstVisibleStreamerId(): string | null {
+        const streamer = this.server.streamerRegistry.streamers.find((s) => this.isVisibleToPlayers(s));
+        return streamer ? streamer.streamerId : null;
+    }
+
     private sendToStreamer(message: BaseMessage): void {
         if (!this.subscribedStreamer) {
             Logger.warn(
                 `Player ${this.playerId} tried to send to a streamer but they're not subscribed to any.`
             );
-            const streamerId = this.server.streamerRegistry.getFirstStreamerId();
+            const streamerId = this.getFirstVisibleStreamerId();
             if (!streamerId) {
                 Logger.error('There are no streamers to force a subscription. Disconnecting.');
                 this.disconnect();
@@ -150,6 +172,17 @@ export class PlayerConnection implements IPlayer, LogUtils.IMessageLogger {
         if (!streamer) {
             Logger.error(
                 `subscribe: Player ${this.playerId} tried to subscribe to a non-existent streamer ${streamerId}`
+            );
+            const failureMessage = MessageHelpers.createMessage(Messages.subscribeFailed, {
+                message: `Streamer ${streamerId} does not exist.`
+            });
+            this.protocol.sendMessage(failureMessage);
+            return;
+        }
+
+        if (!this.isVisibleToPlayers(streamer)) {
+            Logger.error(
+                `subscribe: Player ${this.playerId} tried to subscribe to ${streamerId} which is not visible to players`
             );
             const failureMessage = MessageHelpers.createMessage(Messages.subscribeFailed, {
                 message: `Streamer ${streamerId} does not exist.`
@@ -236,6 +269,7 @@ export class PlayerConnection implements IPlayer, LogUtils.IMessageLogger {
         const listMessage = MessageHelpers.createMessage(Messages.streamerList, {
             ids: this.server.streamerRegistry.streamers
                 .filter((streamer) => streamer.streaming)
+                .filter((streamer) => this.isVisibleToPlayers(streamer))
                 .map((streamer) => streamer.streamerId)
         });
         this.sendMessage(listMessage);

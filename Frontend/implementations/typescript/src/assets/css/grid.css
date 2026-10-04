@@ -1,0 +1,988 @@
+:root {
+    --bg: #0a0c0f;
+    --surface: #14181e;
+    --surface-2: #181d24;
+    --border: #232932;
+    --border-strong: #333b47;
+    --topbar-bg: rgba(10, 12, 15, 0.82);
+    --input-bg: #12161b;
+    --button-bg: #1a1f26;
+    --button-hover: #222831;
+    --text: #e9eef5;
+    --dim: #9aa4b2;
+    --faint: #6b7684;
+    --accent: #4c8dff;
+    --accent-soft: rgba(76, 141, 255, 0.22);
+    --live: #3ddc71;
+    --warn: #f0a93b;
+    --warn-soft: rgba(240, 169, 59, 0.12);
+    --danger: #f0616a;
+    --tile-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --tile-shadow-hover: 0 12px 30px rgba(0, 0, 0, 0.45);
+
+    /* SMPTE 75% colour bars. This is a broadcast tool, so the test card is the
+       palette: the seven standard bars are used for decoration and for state,
+       but never as the only cue for anything - every colour is paired with a
+       word or a shape. Red is deliberately left out of the decorative strips so
+       that it stays reserved for faults. */
+    --bar-grey: #bfbfbf;
+    --bar-yellow: #bfbf00;
+    --bar-cyan: #00bfbf;
+    --bar-green: #00bf00;
+    --bar-magenta: #bf00bf;
+    --bar-red: #bf0000;
+    --bar-blue: #0000bf;
+    --bar-blue-lit: #4a6bff;
+    --bars: linear-gradient(
+        90deg,
+        var(--bar-grey) 0 14.29%,
+        var(--bar-yellow) 0 28.57%,
+        var(--bar-cyan) 0 42.86%,
+        var(--bar-green) 0 57.14%,
+        var(--bar-magenta) 0 71.43%,
+        var(--bar-red) 0 85.71%,
+        var(--bar-blue) 0 100%
+    );
+}
+
+@media (prefers-color-scheme: light) {
+    :root {
+        --bg: #f4f6f9;
+        --surface: #ffffff;
+        --surface-2: #f8fafc;
+        --border: #e3e8ef;
+        --border-strong: #cbd4e0;
+        --topbar-bg: rgba(244, 246, 249, 0.85);
+        --input-bg: #ffffff;
+        --button-bg: #ffffff;
+        --button-hover: #eef2f7;
+        --text: #131820;
+        --dim: #5c6875;
+        --faint: #8b95a3;
+        --accent-soft: rgba(76, 141, 255, 0.16);
+        --warn-soft: rgba(240, 169, 59, 0.16);
+        --tile-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+        --tile-shadow-hover: 0 14px 30px rgba(16, 24, 40, 0.12);
+    }
+}
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: Montserrat, system-ui, -apple-system, Segoe UI, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Ambient backdrop --------------------------------------------------------
+   Drifting light orbs plus a blurred montage of the live previews, so the page
+   is never completely still. Decorative only: it sits behind the content and is
+   never hit-tested.
+
+   Everything here is deliberately restricted to compositor-only work: no
+   animated filters, no continuous repaints, and no blend modes that would force
+   the compositor to read back the layers underneath on every frame. The page
+   also drops the whole backdrop (see `html.calm` at the end of this file) when
+   the measured frame rate says the machine cannot afford it. */
+
+.backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    contain: layout paint style;
+    pointer-events: none;
+    background: var(--bg);
+}
+
+.orb {
+    position: absolute;
+    width: clamp(340px, 34vw, 640px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    opacity: 0.55;
+    will-change: transform;
+}
+
+/* Gradients are soft on their own, so no blur filter is needed on these. Their
+   hues are the colour bars: blue, magenta, cyan and yellow. */
+.orb-a {
+    top: -18%;
+    left: -8%;
+    background: radial-gradient(circle at 50% 50%, rgba(47, 79, 255, 0.5), rgba(47, 79, 255, 0) 68%);
+    animation: drift-a 46s ease-in-out infinite alternate;
+}
+
+.orb-b {
+    top: -14%;
+    right: -12%;
+    background: radial-gradient(circle at 50% 50%, rgba(191, 0, 191, 0.38), rgba(191, 0, 191, 0) 68%);
+    animation: drift-b 58s ease-in-out infinite alternate;
+}
+
+.orb-c {
+    bottom: -26%;
+    left: 10%;
+    background: radial-gradient(circle at 50% 50%, rgba(0, 191, 191, 0.3), rgba(0, 191, 191, 0) 68%);
+    animation: drift-c 67s ease-in-out infinite alternate;
+}
+
+.orb-d {
+    bottom: -20%;
+    right: 4%;
+    background: radial-gradient(circle at 50% 50%, rgba(191, 191, 0, 0.22), rgba(191, 191, 0, 0) 68%);
+    animation: drift-d 52s ease-in-out infinite alternate;
+}
+
+/* The montage is upscaled from a 128x72 capture, so all of its softness is
+   baked into the image itself (grid.ts blurs the canvas as it draws). A blur
+   filter here would have to be applied to a full-viewport layer and re-applied
+   whenever the layer is re-rastered, which costs far more than it is worth.
+   The layer is exactly the viewport: `cover` fills it by itself, and every
+   percent of oversize here is another percent of full-screen blending. */
+.wash {
+    position: absolute;
+    inset: 0;
+}
+
+/* The montage layer: one <canvas> that grid.ts owns. Its opacity is constant,
+   because the cross-fade between frames happens inside the canvas rather than
+   in the compositor — animating opacity here would make the browser upscale and
+   blend two full viewports per frame for the length of the fade, and promote
+   and un-promote the layer around each one. On a machine already compositing
+   another window's video, that is the one cost worth designing out.
+   `object-fit: cover` preserves the capture's aspect, which is what
+   `background-size: cover` used to do. */
+.wash-frame {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.42;
+}
+
+.vignette {
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(125% 85% at 50% -10%, rgba(0, 0, 0, 0) 35%, rgba(0, 0, 0, 0.62) 100%),
+        linear-gradient(180deg, rgba(6, 8, 11, 0.74), rgba(6, 8, 11, 0.32) 32%, rgba(6, 8, 11, 0.82));
+}
+
+@keyframes drift-a {
+    from { transform: translate3d(-5%, -4%, 0) scale(1); }
+    to { transform: translate3d(11%, 8%, 0) scale(1.24); }
+}
+
+@keyframes drift-b {
+    from { transform: translate3d(6%, -2%, 0) scale(1.15); }
+    to { transform: translate3d(-9%, 9%, 0) scale(0.95); }
+}
+
+@keyframes drift-c {
+    from { transform: translate3d(-3%, 6%, 0) scale(1.1); }
+    to { transform: translate3d(9%, -6%, 0) scale(1.28); }
+}
+
+@keyframes drift-d {
+    from { transform: translate3d(4%, 3%, 0) scale(0.98); }
+    to { transform: translate3d(-8%, -5%, 0) scale(1.2); }
+}
+
+.shell {
+    width: 100%;
+    max-width: 1440px;
+    margin: 0 auto;
+    padding-inline: clamp(1rem, 3vw, 2.5rem);
+}
+
+/* Header ------------------------------------------------------------------ */
+
+.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    /* The colour bars run along the top edge, the way a test card sits on a
+       broadcast monitor: one static image, no animation, nothing to composite. */
+    background-color: var(--topbar-bg);
+    background-image: var(--bars);
+    background-repeat: no-repeat;
+    background-size: 100% 3px;
+    background-position: top left;
+    border-bottom: 1px solid var(--border);
+}
+
+.topbar-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding-block: 0.8rem;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    min-width: 0;
+}
+
+/* A miniature test card: the bars over the dark pluge strip, which is how a
+   real bars pattern is laid out. */
+.brand-mark {
+    flex: none;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background-color: #0b0d10;
+    background-image: var(--bars);
+    background-repeat: no-repeat;
+    background-size: 100% 70%;
+    background-position: top;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09), 0 6px 16px rgba(0, 0, 0, 0.34);
+}
+
+.brand-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.brand-text h1 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+}
+
+#subtitle {
+    color: var(--dim);
+    font-size: 0.79rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.search {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 38px;
+    padding-inline: 0.7rem;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--faint);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.search:hover { border-color: var(--border-strong); }
+
+.search:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.search svg {
+    flex: none;
+    width: 15px;
+    height: 15px;
+    fill: currentColor;
+}
+
+.search input {
+    width: 13rem;
+    max-width: 45vw;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.87rem;
+}
+
+.search input::placeholder { color: var(--faint); }
+
+/* Sort control. Styled after the search box so the topbar reads as one row of
+   controls rather than a mix of widgets. */
+.select {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    height: 38px;
+    padding-inline: 0.7rem;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--faint);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.select:hover { border-color: var(--border-strong); }
+
+.select:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.select-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+}
+
+.select select {
+    max-width: 40vw;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+/* The popup list is drawn by the OS, so it needs real colours rather than the
+   transparent background that lets the closed control sit on the topbar. */
+.select select option {
+    background: var(--surface);
+    color: var(--text);
+}
+
+.button {
+    height: 38px;
+    padding-inline: 0.95rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--button-bg);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+/* The topbar carries one link styled as a button, so it has to lose the anchor defaults. */
+a.button {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+}
+
+.button:hover {
+    background: var(--button-hover);
+    border-color: var(--border-strong);
+}
+
+.button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    height: 30px;
+    padding-inline: 0.7rem;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.pill::before {
+    content: "";
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.pill[hidden] { display: none; }
+
+.pill-warn {
+    color: var(--warn);
+    background: var(--warn-soft);
+    border-color: rgba(240, 169, 59, 0.3);
+}
+
+/* Grid -------------------------------------------------------------------- */
+
+main.shell {
+    position: relative;
+    z-index: 1;
+    padding-bottom: 3.5rem;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+    gap: clamp(0.85rem, 1.5vw, 1.25rem);
+    padding-top: clamp(1.1rem, 2.2vw, 1.75rem);
+}
+
+.tile {
+    display: flex;
+    flex-direction: column;
+    background-color: var(--surface);
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 45%);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    color: inherit;
+    text-decoration: none;
+    box-shadow: var(--tile-shadow);
+    transition: transform 0.18s cubic-bezier(0.2, 0.7, 0.3, 1), border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.tile:hover {
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0) 50%);
+}
+
+/* `display: flex` above would otherwise win over the hidden attribute. */
+.tile[hidden] { display: none; }
+
+/* The tile body is the link, and the footer beside it is not: a tile carries
+   buttons now, and buttons nested inside an anchor are invalid - a click would
+   navigate rather than act. */
+.tile-link {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    color: inherit;
+    text-decoration: none;
+}
+
+.tile-link:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+.tile:hover {
+    transform: translateY(-3px);
+    border-color: var(--border-strong);
+    box-shadow: var(--tile-shadow-hover);
+}
+
+.tile:focus-within {
+    border-color: var(--accent);
+}
+
+.thumb {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    background: #05070a;
+    overflow: hidden;
+}
+
+.thumb > img {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: opacity 0.35s ease;
+}
+
+.thumb > .awaiting { opacity: 0.6; }
+
+.thumb > .skeleton {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(255, 255, 255, 0.02);
+    background-image: linear-gradient(100deg, rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, 0.06) 50%, rgba(255, 255, 255, 0) 70%);
+    background-size: 220% 100%;
+    background-repeat: no-repeat;
+    animation: shimmer 1.7s linear infinite;
+    transition: opacity 0.35s ease;
+}
+
+.thumb > .preview { opacity: 0; }
+
+/* A colour bar reference line along the foot of every preview, the way a
+   multiviewer labels each feed. It brightens to full strength once the tile has
+   a real frame, so it carries the "signal present" cue: the badge beside it only
+   says the stream is listed, which is a weaker claim than a frame on screen. */
+.thumb::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    background-image: var(--bars);
+    background-size: 100% 100%;
+    opacity: 0.42;
+    transition: opacity 0.35s ease;
+}
+
+.tile[data-frame="loaded"] .thumb::after { opacity: 1; }
+
+.tile[data-frame="loaded"] .thumb > .preview { opacity: 1; }
+
+/* The shimmer is a background-position animation, i.e. a repaint per tile for
+   as long as it runs, so it is stopped rather than merely faded out. */
+.tile[data-frame="loaded"] .thumb > .skeleton {
+    opacity: 0;
+    animation: none;
+}
+.tile[data-frame="loaded"] .thumb > .awaiting { opacity: 0; }
+
+.badge {
+    position: absolute;
+    top: 0.6rem;
+    left: 0.6rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.22rem 0.55rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+    background: rgba(8, 11, 15, 0.72);
+    color: var(--faint);
+    font-size: 0.67rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+}
+
+.badge::before {
+    content: "";
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.tile[data-state="live"] .badge {
+    color: var(--live);
+    border-color: rgba(61, 220, 113, 0.35);
+}
+
+.tile[data-state="live"] .badge::before {
+    background: currentColor;
+}
+
+/* The live dot pings via a scaled, faded ring rather than a pulsing box-shadow:
+   the ring animates on the compositor, whereas a box-shadow would repaint every
+   tile for as long as the page is open. */
+.tile[data-state="live"] .badge::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0.55rem;
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 50%;
+    background: currentColor;
+    animation: ping 2.2s ease-out infinite;
+    pointer-events: none;
+}
+
+/* What the tally falls back to when the streamer list itself cannot be refreshed
+   any more: it borrows the amber of the disconnected pill in the top bar, since
+   the tile is reporting the same condition. A listed stream stays green however
+   its preview is doing - the preview is not evidence about the stream. */
+.tile[data-state="unknown"] .badge {
+    color: var(--warn);
+    border-color: rgba(240, 169, 59, 0.35);
+}
+
+.play {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(4, 6, 9, 0.3);
+    opacity: 0;
+    transition: opacity 0.18s ease;
+}
+
+.play::after {
+    content: "";
+    width: 54px;
+    height: 54px;
+    border: 2px solid rgba(255, 255, 255, 0.85);
+    border-radius: 50%;
+    background-color: rgba(10, 14, 20, 0.45);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 6.4v11.2l8.5-5.6z' fill='%23ffffff'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 22px;
+}
+
+.tile:hover .play,
+.tile:focus-within .play { opacity: 1; }
+
+.meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+    padding: 0.7rem 0.85rem 0.8rem;
+}
+
+.meta .name {
+    font-size: 0.92rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.meta .info {
+    color: var(--dim);
+    font-size: 0.76rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Preview health, reported here rather than on the badge: a snapshot that failed
+   to capture is no evidence that the stream is down, and a stream that is listed
+   keeps its live badge while its preview troubles are spelled out underneath it.
+   Amber is the only level that speaks up, and it is always paired with wording
+   that says what is wrong, so it never relies on colour alone. */
+.tile[data-info="warn"] .meta .info {
+    color: var(--warn);
+    font-weight: 600;
+}
+
+/* Tile footer: what the feed is doing (left) and what the operator can do to it
+   (right). The facts are plain text, and either of them disappears when the
+   index has nothing to report rather than showing a dash for nothing. */
+
+.foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: auto;
+    padding: 0.5rem 0.6rem 0.55rem 0.85rem;
+    border-top: 1px solid var(--border);
+    background: rgba(0, 0, 0, 0.16);
+}
+
+.facts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+    color: var(--dim);
+    font-size: 0.74rem;
+}
+
+.fact[hidden] { display: none; }
+
+/* The duration is the pair to the live badge, so it borrows the live colour and
+   a small dot: green only ever means "this is up", and it is always spelled out
+   in words as well. */
+.fact-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--live);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.fact-live::before {
+    content: "";
+    width: 0.35rem;
+    height: 0.35rem;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.fact-viewers { font-variant-numeric: tabular-nums; }
+
+.actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.action {
+    padding: 0.28rem 0.5rem;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--dim);
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.action:hover {
+    border-color: var(--border-strong);
+    background: var(--button-hover);
+    color: var(--text);
+}
+
+.action:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* The confirmation of a copy, and the failure of one. Neither is a fault state,
+   so neither reaches for red: a copy that worked is quiet, and one that did not
+   is amber, like every other thing this page is unhappy about. */
+.action[data-done="yes"] {
+    border-color: rgba(61, 220, 113, 0.4);
+    color: var(--live);
+}
+
+.action[data-done="no"] {
+    border-color: rgba(240, 169, 59, 0.4);
+    color: var(--warn);
+}
+
+/* A pinned tile says so on the tile itself as well as on the button, because the
+   point of a pin is to recognise the feed while scanning the wall. */
+.tile[data-pinned="true"] {
+    border-color: var(--border-strong);
+    box-shadow: inset 3px 0 0 0 var(--bar-yellow), var(--tile-shadow);
+}
+
+.tile[data-pinned="true"] .action[aria-pressed="true"] {
+    border-color: rgba(191, 191, 0, 0.4);
+    color: var(--bar-yellow);
+}
+
+/* Empty and filtered states ----------------------------------------------- */
+
+.empty {
+    margin-top: clamp(2rem, 8vh, 5.5rem);
+    padding: clamp(2rem, 5vw, 3.5rem) max(1.25rem, 6vw);
+    text-align: center;
+    background: var(--surface);
+    border: 1px dashed var(--border-strong);
+    border-radius: 18px;
+}
+
+/* The empty state is the test card itself: bars over the pluge strip, no
+   signal to show. */
+.empty-mark {
+    width: 62px;
+    height: 62px;
+    margin: 0 auto 1rem;
+    border-radius: 14px;
+    background-color: #0b0d10;
+    background-image: var(--bars);
+    background-repeat: no-repeat;
+    background-size: 100% 68%;
+    background-position: top;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+}
+
+.empty h2 {
+    margin: 0 0 0.35rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+.empty p {
+    margin: 0;
+    color: var(--dim);
+    font-size: 0.88rem;
+}
+
+.noresults {
+    margin: 2rem 0 0;
+    color: var(--dim);
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+@keyframes shimmer {
+    from { background-position: 150% 0; }
+    to { background-position: -50% 0; }
+}
+
+@keyframes ping {
+    0% { transform: translateY(-50%) scale(1); opacity: 0.7; }
+    70%, 100% { transform: translateY(-50%) scale(2.6); opacity: 0; }
+}
+
+/* Drop/return alerts ------------------------------------------------------
+   In-page first, and permanently: notifications need a secure context and a
+   permission, and an operator watching a plain-http grid should still be told
+   when a feed goes. Each alert enters with a transform and an opacity only, so
+   it costs the compositor nothing to show. */
+
+.alerts {
+    position: fixed;
+    right: clamp(0.75rem, 2vw, 1.5rem);
+    bottom: clamp(0.75rem, 2vw, 1.5rem);
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: min(21rem, calc(100vw - 2rem));
+    pointer-events: none;
+}
+
+.toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.6rem 0.7rem 0.65rem 0.8rem;
+    border: 1px solid var(--border-strong);
+    border-left: 3px solid var(--warn);
+    border-radius: 10px;
+    background: var(--surface-2);
+    box-shadow: var(--tile-shadow-hover);
+    pointer-events: auto;
+    animation: toast-in 0.22s ease-out both;
+}
+
+/* A feed that came back is an all-clear, which is what the live colour means on
+   this page. Neither kind is a fault, so neither is red. */
+.toast[data-kind="up"] { border-left-color: var(--live); }
+
+.toast-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+}
+
+.toast-head {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.toast[data-kind="down"] .toast-head { color: var(--warn); }
+.toast[data-kind="up"] .toast-head { color: var(--live); }
+
+.toast-body {
+    color: var(--dim);
+    font-size: 0.78rem;
+    overflow-wrap: anywhere;
+}
+
+.toast-close {
+    flex: none;
+    margin-left: auto;
+    padding: 0 0.2rem;
+    border: 0;
+    background: transparent;
+    color: var(--faint);
+    font: inherit;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.toast-close:hover { color: var(--text); }
+
+@keyframes toast-in {
+    from { transform: translateY(0.6rem); opacity: 0; }
+    to { transform: none; opacity: 1; }
+}
+
+/* Light theme: these come last so they win over the base rules above. A dark
+   vignette would swallow a light page, so the backdrop is inverted into a
+   softly tinted paper look instead. */
+
+@media (prefers-color-scheme: light) {
+    .orb { opacity: 0.3; }
+
+    .wash-frame { opacity: 0.14; }
+
+    .vignette {
+        background:
+            radial-gradient(125% 85% at 50% -10%, rgba(255, 255, 255, 0) 35%, rgba(255, 255, 255, 0.55) 100%),
+            linear-gradient(180deg, rgba(244, 246, 249, 0.86), rgba(244, 246, 249, 0.45) 32%, rgba(244, 246, 249, 0.9));
+    }
+
+    .tile { background-image: linear-gradient(180deg, rgba(15, 23, 42, 0.025), rgba(15, 23, 42, 0) 45%); }
+
+    .tile:hover { background-image: linear-gradient(180deg, rgba(15, 23, 42, 0.05), rgba(15, 23, 42, 0) 50%); }
+
+    .foot { background: rgba(15, 23, 42, 0.03); }
+}
+
+/* Calm mode: the whole ambient layer is removed. grid.ts adds this class when
+   the frame rate says the backdrop costs more than the machine can spare, and
+   `?fx=off` forces it. A flat wash of colour is left so the page still has some
+   depth without any animation, filter or blend. */
+
+html.calm .orb,
+html.calm .wash {
+    display: none;
+}
+
+html.calm .backdrop {
+    background-image: radial-gradient(120% 80% at 50% -10%, rgba(47, 79, 255, 0.14), rgba(47, 79, 255, 0) 60%);
+}
+
+html.calm .vignette { opacity: 0.72; }
+
+html.calm .tile[data-state="live"] .badge::after { animation: none; }
+
+/* Wash-less mode: the orbs are kept but the montage, which is the one layer
+   that has to blend a full viewport every frame, is dropped. grid.ts adds this
+   when an already-settled page is still not hitting full frame rate. */
+
+html.nowash .wash { display: none; }
+
+/* Backdrop toggle in the topbar, so a machine that struggles can drop the
+   animation without editing the URL. The choice is remembered. */
+
+#fx[data-mode="off"] { color: var(--faint); }
+
+/* The alert toggles read as on or off at a glance: amber when they are armed,
+   plain when they are not. Amber is already "something is not as it should be"
+   here, and a disabled toggle is not a fault, so it only dims. */
+#notify[data-mode="off"],
+#sound[data-mode="off"] { color: var(--faint); }
+
+#notify[data-mode="on"],
+#sound[data-mode="on"] {
+    border-color: rgba(240, 169, 59, 0.4);
+    color: var(--warn);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+       animation-duration: 0.001ms !important;
+       animation-iteration-count: 1 !important;
+       transition-duration: 0.001ms !important;
+    }
+
+    .tile:hover { transform: none; }
+}
+

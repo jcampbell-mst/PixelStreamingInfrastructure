@@ -1,0 +1,77 @@
+<!-- Copyright Epic Games, Inc. All Rights Reserved. -->
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <link rel="shortcut icon" href="./assets/images/favicon.ico" type="image/x-icon">
+    <link type="text/css" rel="stylesheet" href="./assets/css/grid.css">
+    <title>Live streams</title>
+</head>
+<body>
+    <!-- Purely decorative animated backdrop. grid.ts fills #wash with a single
+         canvas of montage frames taken from previews that already loaded. -->
+    <div class="backdrop" aria-hidden="true">
+        <div class="orb orb-a"></div>
+        <div class="orb orb-b"></div>
+        <div class="orb orb-c"></div>
+        <div class="orb orb-d"></div>
+        <div class="wash" id="wash"></div>
+        <div class="vignette"></div>
+    </div>
+
+    <header class="topbar">
+        <div class="shell topbar-inner">
+            <div class="brand">
+                <span class="brand-mark" aria-hidden="true"></span>
+                <span class="brand-text">
+                    <h1>Live streams</h1>
+                    <span id="subtitle">Connecting to the signalling server…</span>
+                </span>
+            </div>
+            <div class="topbar-actions">
+                <span id="status" class="pill pill-warn" hidden></span>
+                <label class="search">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.5 3a7.5 7.5 0 1 0 4.55 13.46l4.24 4.25 1.42-1.42-4.25-4.24A7.5 7.5 0 0 0 10.5 3zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z"/></svg>
+                    <input id="search" type="search" placeholder="Filter streams" aria-label="Filter streams by name" autocomplete="off" spellcheck="false">
+                </label>
+                <label class="select">
+                    <span class="select-label">Sort</span>
+                    <select id="sort" aria-label="Sort the stream tiles">
+                        <option value="name">Pinned, then name</option>
+                        <option value="live">Pinned, then live first</option>
+                        <option value="viewers">Pinned, then most watched</option>
+                    </select>
+                </label>
+                <button id="reload" type="button" class="button">Refresh previews</button>
+                <button id="notify" type="button" class="button" data-mode="off" aria-pressed="false" title="Browser notifications when a feed drops or comes back.">Alerts off</button>
+                <button id="sound" type="button" class="button" data-mode="off" aria-pressed="false" title="Play a short tone with each alert.">Sound off</button>
+                <button id="fx" type="button" class="button" data-mode="auto" title="Animated backdrop behind the stream grid. Auto drops it when the machine cannot spare the frames; No montage keeps the orbiting glows but stops the fading preview wash.">Backdrop: Auto</button>
+                <a id="wall" class="button" href="./wall.html" title="Watch every feed at once on one page.">Multiviewer</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="shell">
+        <div id="grid" class="grid"></div>
+
+        <section id="empty" class="empty" hidden>
+            <span class="empty-mark" aria-hidden="true"></span>
+            <h2>No streams are live</h2>
+            <p>Start a pixel streaming source and it will appear here on its own.</p>
+        </section>
+
+        <p id="noresults" class="noresults" hidden>No streams match that filter.</p>
+    </main>
+
+    <!-- Drop/return alerts. Announcements only: `polite` so they never
+         interrupt, and the container is empty until something happens. -->
+    <div id="alerts" class="alerts" role="log" aria-live="polite" aria-label="Feed alerts"></div>
+
+    <!-- Only used as the source of the "awaiting video" image on each tile, and
+         to have webpack emit that asset. Do not remove. -->
+    <img id="placeholder" src="./assets/images/placeholder.svg" hidden alt="">
+</body>
+</html>
+

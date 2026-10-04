@@ -45,6 +45,11 @@ export interface IServerConfig {
 
     // Max number of players per streamer.
     maxSubscribers?: number;
+
+    // When true, players may only see and subscribe to SFU streamers. Raw
+    // streamers are hidden from the streamer list and cannot be subscribed to,
+    // so players are never connected directly to a streamer. Defaults to false.
+    hideNonSfuStreamers?: boolean;
 }
 
 export type ProtocolConfig = {

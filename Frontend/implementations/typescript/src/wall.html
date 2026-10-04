@@ -1,0 +1,43 @@
+<!-- Copyright Epic Games, Inc. All Rights Reserved. -->
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <link rel="shortcut icon" href="./assets/images/favicon.ico" type="image/x-icon">
+    <link type="text/css" rel="stylesheet" href="./assets/css/wall.css">
+    <title>Multiviewer</title>
+</head>
+<body>
+    <header id="wallbar">
+        <a id="backToGrid" href="./grid.html" title="Back to all streams">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+            All streams
+        </a>
+        <h1>Multiviewer</h1>
+        <span id="wallStatus" class="wall-pill">Connecting to the signalling server…</span>
+        <div class="wall-spacer"></div>
+        <span id="tileCount" class="wall-fact" hidden></span>
+        <div class="layout" role="group" aria-label="Layout">
+            <button type="button" data-layout="auto" class="is-active">Auto</button>
+            <button type="button" data-layout="1" title="One feed, full size">1</button>
+            <button type="button" data-layout="4" title="Two by two">2&times;2</button>
+            <button type="button" data-layout="9" title="Three by three">3&times;3</button>
+            <button type="button" data-layout="16" title="Four by four">4&times;4</button>
+        </div>
+        <button id="wallFullscreen" type="button" title="Fullscreen (F)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>
+            <span id="fullscreenLabel">Fullscreen</span>
+        </button>
+        <span id="clock" class="wall-clock">--:--:--</span>
+    </header>
+
+    <main id="wall"></main>
+
+    <div id="empty" hidden>
+        <p class="empty-title">No streams yet</p>
+        <p class="empty-body">Waiting for a streamer to connect to the signalling server. This page fills itself in as soon as one appears.</p>
+    </div>
+</body>
+</html>
