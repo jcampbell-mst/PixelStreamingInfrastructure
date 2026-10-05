@@ -148,8 +148,8 @@ program
     )
     .option(
         '--session_days <days>',
-        'Sets how long a sign-in lasts before it has to be repeated.',
-        config_file.session_days || '30'
+        'Sets how long a sign-in lasts before it has to be repeated. 0 keeps sign-ins until the user signs out.',
+        config_file.session_days || '0'
     )
     .option(
         '--invite_days <days>',
@@ -281,9 +281,19 @@ if (options.no_auth) {
         warn: (message: string) => Logger.warn(message)
     };
 
+    // 0 is a meaningful value here ("sign-ins do not lapse"), so it cannot go through
+    // the `|| default` fallback the other numeric options use: that would turn an
+    // explicit 0 back into the default. Anything unreadable is called out rather than
+    // quietly treated as permanent, since that is the less strict of the two readings.
+    const sessionDaysRaw = Number.parseInt(options.session_days, 10);
+    const sessionDays = Number.isFinite(sessionDaysRaw) && sessionDaysRaw >= 0 ? sessionDaysRaw : 0;
+    if (sessionDaysRaw !== sessionDays) {
+        Logger.warn(`Invalid --session_days "${options.session_days}"; sign-ins will not lapse.`);
+    }
+
     auth = createAuth({
         storePath: options.auth_store,
-        sessionDays: Number.parseInt(options.session_days, 10) || 30,
+        sessionDays,
         inviteDays: Number.parseInt(options.invite_days, 10) || 7,
         baseUrl: options.auth_base_url,
         appName: options.auth_app_name,
@@ -298,6 +308,11 @@ if (options.no_auth) {
     const storePath = path.resolve(options.auth_store);
     const users = auth.store.listUsers();
     Logger.info(`Auth store: ${storePath} (${users.length} account(s))`);
+    Logger.info(
+        sessionDays > 0
+            ? `Sign-ins last ${sessionDays} day(s) from last use.`
+            : 'Sign-ins do not lapse. They end when the user signs out, changes their password, or an admin ends them.'
+    );
     if (users.length === 0) {
         Logger.info(
             'No accounts exist yet. Create the first admin with: ' +

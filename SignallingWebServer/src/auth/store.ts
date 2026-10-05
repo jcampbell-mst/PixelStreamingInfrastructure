@@ -59,7 +59,8 @@ export interface ISessionRecord {
     id: string;
     userId: string;
     createdAt: string;
-    expiresAt: string;
+    /** Null for a session that does not lapse; see `SessionManager.permanent`. */
+    expiresAt: string | null;
     lastSeenAt: string;
     ip: string;
     userAgent: string;
@@ -191,7 +192,10 @@ export class AuthStore {
                     id: session.id as string,
                     userId: session.userId as string,
                     createdAt: asString(session.createdAt, nowIso()),
-                    expiresAt: asString(session.expiresAt, nowIso()),
+                    // Only an explicit null means "does not lapse". A missing or
+                    // non-string deadline falls back to now, which reads as already
+                    // expired, so damaged data cannot turn into an eternal session.
+                    expiresAt: session.expiresAt === null ? null : asString(session.expiresAt, nowIso()),
                     lastSeenAt: asString(session.lastSeenAt, nowIso()),
                     ip: asString(session.ip, ''),
                     userAgent: asString(session.userAgent, '').slice(0, MAX_USER_AGENT_LENGTH)
@@ -408,7 +412,9 @@ export class AuthStore {
         const invitesBefore = this.data.invites.length;
 
         this.data.sessions = this.data.sessions.filter((session) => {
-            if (session.expiresAt <= nowIsoValue) {
+            // A null deadline is a session that only ends when it is ended, not a
+            // malformed one, so it is never swept for age.
+            if (session.expiresAt !== null && session.expiresAt <= nowIsoValue) {
                 return false;
             }
             // A session belonging to a deleted account can never be valid again.

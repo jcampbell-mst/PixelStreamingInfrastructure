@@ -9,11 +9,20 @@ export interface ISessionContext {
     session: ISessionRecord;
     /** The raw cookie value for this session. */
     token: string;
+    /**
+     * True when this request moved the rolling deadline, in which case the caller has
+     * to re-send the cookie so the browser's own copy of it moves too.
+     */
+    refreshed: boolean;
 }
 
 export interface ISessionManagerOptions {
     cookieName: string;
-    /** Session lifetime, refreshed on use. */
+    /**
+     * Session lifetime in days, refreshed on use. Zero (the default) means a sign-in
+     * does not lapse at all: it stays valid until the user signs out, changes their
+     * password, or an admin ends it.
+     */
     days: number;
     /** How often the "last seen" stamp is written back to disk. */
     touchIntervalMs: number;
@@ -26,9 +35,19 @@ export interface ISessionOrigin {
 
 const DEFAULT_OPTIONS: ISessionManagerOptions = {
     cookieName: 'ps_session',
-    days: 30,
+    days: 0,
     touchIntervalMs: 60 * 1000
 };
+
+/**
+ * Lifetime asked of the browser for a session that does not lapse.
+ *
+ * A cookie cannot be truly permanent, and Chrome silently caps any lifetime at 400
+ * days, so this is the longest deadline that survives. It is re-sent every time the
+ * session is used, which keeps moving the deadline for anyone who keeps visiting; only
+ * a visitor who is away for more than a year has to sign in again.
+ */
+const MAX_COOKIE_AGE_SECONDS = 400 * 24 * 60 * 60;
 
 /**
  * Server side sessions.
@@ -50,8 +69,29 @@ export class SessionManager {
         return this.options.cookieName;
     }
 
+    /** Configured lifetime in days. Zero means sign-ins do not lapse. */
+    public get days(): number {
+        return this.options.days;
+    }
+
+    /** True when sessions are kept until they are ended rather than until they lapse. */
+    public get permanent(): boolean {
+        return !(this.options.days > 0);
+    }
+
     public get lifetimeMs(): number {
         return this.options.days * 24 * 60 * 60 * 1000;
+    }
+
+    /**
+     * The deadline for a session issued now.
+     *
+     * Null marks a session with no deadline. Storing that in the record rather than a
+     * far-future date keeps the store honest about what it means, and lets an install
+     * that switches to a finite lifetime still expire the sessions it already has.
+     */
+    private expiryFrom(now: Date): string | null {
+        return this.permanent ? null : new Date(now.getTime() + this.lifetimeMs).toISOString();
     }
 
     /** Issues a new session and returns the raw token to put in the cookie. */
@@ -62,7 +102,7 @@ export class SessionManager {
             id: hashToken(token),
             userId: user.id,
             createdAt: now.toISOString(),
-            expiresAt: new Date(now.getTime() + this.lifetimeMs).toISOString(),
+            expiresAt: this.expiryFrom(now),
             lastSeenAt: now.toISOString(),
             ip: origin.ip,
             userAgent: origin.userAgent.slice(0, 200)
@@ -88,7 +128,7 @@ export class SessionManager {
         }
 
         const now = new Date();
-        if (record.expiresAt <= now.toISOString()) {
+        if (record.expiresAt !== null && record.expiresAt <= now.toISOString()) {
             this.store.removeSession(record.id);
             return null;
         }
@@ -100,22 +140,24 @@ export class SessionManager {
             return null;
         }
 
-        this.touch(record, now);
-        return { user, session: record, token };
+        const refreshed = this.touch(record, now);
+        return { user, session: record, token, refreshed };
     }
 
     /**
      * Refreshes the rolling expiry, writing back to disk at most once per interval so
-     * that ordinary page loads do not hammer the store file.
+     * that ordinary page loads do not hammer the store file. Returns whether anything
+     * was actually written.
      */
-    private touch(record: ISessionRecord, now: Date): void {
+    private touch(record: ISessionRecord, now: Date): boolean {
         const lastSeenMs = new Date(record.lastSeenAt).getTime();
         if (now.getTime() - lastSeenMs < this.options.touchIntervalMs) {
-            return;
+            return false;
         }
         record.lastSeenAt = now.toISOString();
-        record.expiresAt = new Date(now.getTime() + this.lifetimeMs).toISOString();
+        record.expiresAt = this.expiryFrom(now);
         this.store.saveSoon();
+        return true;
     }
 
     public revoke(token: string): void {
@@ -144,12 +186,13 @@ export class SessionManager {
 
     /** Serialises a Set-Cookie value for a session. */
     public cookieHeader(token: string, secure: boolean): string {
+        const maxAge = this.permanent ? MAX_COOKIE_AGE_SECONDS : Math.floor(this.lifetimeMs / 1000);
         const attributes = [
             `${this.options.cookieName}=${token}`,
             'Path=/',
             'HttpOnly',
             'SameSite=Lax',
-            `Max-Age=${Math.floor(this.lifetimeMs / 1000)}`
+            `Max-Age=${maxAge}`
         ];
         if (secure) {
             attributes.push('Secure');

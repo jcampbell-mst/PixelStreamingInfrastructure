@@ -402,6 +402,7 @@ export function createAuthRouter(options: IAuthRoutesOptions): Router {
                 user: req.user,
                 csrf: sessions.csrfToken(req.sessionToken ?? ''),
                 sessionCount: store.sessionsForUser(req.user.id).length,
+                sessionDays: sessions.days,
                 ...flashFrom(req)
             })
         );
@@ -451,6 +452,7 @@ export function createAuthRouter(options: IAuthRoutesOptions): Router {
                     user,
                     csrf: sessions.csrfToken(req.sessionToken ?? ''),
                     sessionCount: store.sessionsForUser(user.id).length,
+                    sessionDays: sessions.days,
                     error: `Too many attempts. Try again in ${retryAfter} seconds.`
                 })
             );
@@ -464,6 +466,7 @@ export function createAuthRouter(options: IAuthRoutesOptions): Router {
                     user,
                     csrf: sessions.csrfToken(req.sessionToken ?? ''),
                     sessionCount: store.sessionsForUser(user.id).length,
+                    sessionDays: sessions.days,
                     error: 'Your current password was not correct.'
                 })
             );
@@ -479,6 +482,7 @@ export function createAuthRouter(options: IAuthRoutesOptions): Router {
                     user,
                     csrf: sessions.csrfToken(req.sessionToken ?? ''),
                     sessionCount: store.sessionsForUser(user.id).length,
+                    sessionDays: sessions.days,
                     error: problem
                 })
             );

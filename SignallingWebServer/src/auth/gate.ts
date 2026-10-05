@@ -2,7 +2,7 @@
 import { IncomingMessage } from 'http';
 import { Request, RequestHandler, Response } from 'express';
 import { SessionManager } from './sessions';
-import { IAuthLogger, safeRedirectPath } from './util';
+import { IAuthLogger, isSecureRequest, safeRedirectPath } from './util';
 
 export interface IAuthGateOptions {
     sessions: SessionManager;
@@ -65,13 +65,20 @@ function forceNoStore(res: Response): void {
  * account and admin pages; enforcement is the separate `requireAuth` middleware.
  */
 export function resolveSession(sessions: SessionManager): RequestHandler {
-    return (req, _res, next) => {
+    return (req, res, next) => {
         const token = sessions.tokenFromCookieHeader(req.headers.cookie);
         const context = sessions.resolve(token);
         if (context) {
             req.user = context.user;
             req.authSession = context.session;
             req.sessionToken = context.token;
+            if (context.refreshed) {
+                // The server moved the session's deadline, so the browser has to be
+                // told about it: the cookie's own lifetime is what decides when the
+                // browser stops sending it. Without this a sign-in would still lapse
+                // in the browser even though the record survived.
+                SessionManager.appendCookie(res, sessions.cookieHeader(context.token, isSecureRequest(req)));
+            }
         }
         next();
     };

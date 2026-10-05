@@ -137,9 +137,9 @@ export function safeEqual(a: string, b: string): boolean {
 
 /**
  * Password policy: length is the only thing that measurably helps, so no character
- * class rules. A 12 character minimum matches current NIST guidance.
+ * class rules. 8 characters is the floor NIST SP 800-63B sets for memorised secrets.
  */
-export const PASSWORD_MIN_LENGTH = 12;
+export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 200;
 
 /** Returns a human readable problem with the password, or null if it is acceptable. */

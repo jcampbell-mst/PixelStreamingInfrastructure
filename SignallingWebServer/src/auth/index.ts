@@ -13,7 +13,7 @@ export { IAuthLogger } from './util';
 export interface IAuthOptions {
     /** Where the users/invites/sessions file lives. Defaults to `data/auth.json`. */
     storePath?: string;
-    /** How long a signed-in session lasts, refreshed on use. */
+    /** How long a signed-in session lasts, refreshed on use. 0 means it does not lapse. */
     sessionDays?: number;
     /** Default lifetime of a newly issued invite. */
     inviteDays?: number;
@@ -57,7 +57,7 @@ export function createAuth(options: IAuthOptions): IAuth {
     const store = new AuthStore(options.storePath ?? defaultStorePath());
     store.load();
 
-    const sessions = new SessionManager(store, { days: options.sessionDays ?? 30 });
+    const sessions = new SessionManager(store, { days: options.sessionDays ?? 0 });
 
     const pageContext: IPageContext = {
         appName: options.appName ?? 'Live streams',

@@ -63,7 +63,7 @@ Options:
   --snapshot_proxy_port <port>  The port of the SFU snapshot API to proxy to. (default: "8891")
   --no_auth                     Disables the sign-in requirement. Anyone can view the grid, the player and the player websocket. (default: false)
   --auth_store <path>           Sets the path of the auth data file (users, invites, sessions). (default: "SignallingWebServer/data/auth.json")
-  --session_days <days>         Sets how long a sign-in lasts before it has to be repeated. (default: "30")
+  --session_days <days>         Sets how long a sign-in lasts before it has to be repeated. 0 keeps sign-ins until the user signs out. (default: "0")
   --invite_days <days>          Sets the default lifetime of an invite link generated from the admin page. (default: "7")
   --auth_app_name <name>        Sets the site name shown on the sign-in, invite and admin pages. (default: "Live streams")
   --auth_base_url <url>         Sets the public base URL used to build invite links, e.g. https://streams.example.com. (default: "")
@@ -96,7 +96,7 @@ These CLI options can also be described in a `config.json` (default config file 
 	"snapshot_proxy_host": "127.0.0.1",
 	"snapshot_proxy_port": "8891",
 	"auth_store": "data/auth.json",
-	"session_days": "30",
+	"session_days": "0",
 	"invite_days": "7",
 	"auth_app_name": "Live streams",
 	"auth_base_url": "",
@@ -180,7 +180,7 @@ Every form on the page carries a CSRF token tied to the session. A POST without 
 
 Signing in returns an opaque token in the `ps_session` cookie (`HttpOnly`, `SameSite=Lax`, and `Secure` when the request arrived over https or with `X-Forwarded-Proto: https`). Only the SHA-256 of that token is written to disk, so the file cannot be replayed as a sign-in. Validity is decided on every request, which is why signing out, disabling an account, revoking sessions and deleting an account all take effect immediately — including for websockets.
 
-Sessions last `--session_days` (30 by default) and are refreshed on use. Failed sign-ins are limited to 30 per address and 6 per address+account per 15 minutes; invite redemption to 20 per hour and admin actions to 200 per hour. A rate-limited reply carries `Retry-After` and the page says how long to wait.
+Sessions last `--session_days` from last use, and the default of `0` means a sign-in never lapses: it ends when the user signs out, changes their password, or an admin revokes it. Set a positive number to make sign-ins expire again. Failed sign-ins are limited to 30 per address and 6 per address+account per 15 minutes; invite redemption to 20 per hour and admin actions to 200 per hour. A rate-limited reply carries `Retry-After` and the page says how long to wait.
 
 **Set `--reverse-proxy`** whenever Wilbur sits behind one, or every request looks like it came from the proxy and the per-address limits collapse into a single shared budget. The server warns at startup if sign-in is on without it.
 

@@ -428,9 +428,15 @@ export interface IAccountPageOptions extends IFlash {
     user: IUserRecord;
     csrf: string;
     sessionCount: number;
+    /** Configured sign-in lifetime in days. 0 means sign-ins do not lapse. */
+    sessionDays: number;
 }
 
 export function renderAccountPage(ctx: IPageContext, options: IAccountPageOptions): string {
+    const lifetime =
+        options.sessionDays > 0
+            ? `Sessions last ${options.sessionDays} day${options.sessionDays === 1 ? '' : 's'} from last use.`
+            : 'Your sign-in stays active until you sign out.';
     const body = `<div class="topbar">
 ${brandLine(ctx.appName, 'Account')}
 ${options.user.role === 'admin' ? '<a href="/admin">Administration</a>' : ''}
@@ -466,7 +472,7 @@ ${messageBlock(options)}
 </form>
 </div>
 </div>
-<p class="foot">Sessions last 30 days from last use. Signing out ends only this one.</p>`;
+<p class="foot">${escapeHtml(lifetime)} Signing out ends only this one.</p>`;
     return layout(`Account - ${ctx.appName}`, body, { wide: true });
 }
 export interface IAdminPageOptions extends IFlash {
